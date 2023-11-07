@@ -14,13 +14,232 @@
 # limitations under the License.
 # ==============================================================================
 """Norm-Free Nets."""
-# pylint: disable=unused-import
-# pylint: disable=invalid-name
-
 import haiku as hk
 import jax
 import jax.numpy as jnp
-from nfnets import base
+import numpy as np
+
+nfnet_params = {}
+
+
+# F-series models
+nfnet_params.update(
+    **{
+        "F0": {
+            "width": [256, 512, 1536, 1536],
+            "depth": [1, 2, 6, 3],
+            "train_imsize": 192,
+            "test_imsize": 256,
+            "RA_level": "405",
+            "drop_rate": 0.2,
+        },
+        "F1": {
+            "width": [256, 512, 1536, 1536],
+            "depth": [2, 4, 12, 6],
+            "train_imsize": 224,
+            "test_imsize": 320,
+            "RA_level": "410",
+            "drop_rate": 0.3,
+        },
+        "F2": {
+            "width": [256, 512, 1536, 1536],
+            "depth": [3, 6, 18, 9],
+            "train_imsize": 256,
+            "test_imsize": 352,
+            "RA_level": "410",
+            "drop_rate": 0.4,
+        },
+        "F3": {
+            "width": [256, 512, 1536, 1536],
+            "depth": [4, 8, 24, 12],
+            "train_imsize": 320,
+            "test_imsize": 416,
+            "RA_level": "415",
+            "drop_rate": 0.4,
+        },
+        "F4": {
+            "width": [256, 512, 1536, 1536],
+            "depth": [5, 10, 30, 15],
+            "train_imsize": 384,
+            "test_imsize": 512,
+            "RA_level": "415",
+            "drop_rate": 0.5,
+        },
+        "F5": {
+            "width": [256, 512, 1536, 1536],
+            "depth": [6, 12, 36, 18],
+            "train_imsize": 416,
+            "test_imsize": 544,
+            "RA_level": "415",
+            "drop_rate": 0.5,
+        },
+        "F6": {
+            "width": [256, 512, 1536, 1536],
+            "depth": [7, 14, 42, 21],
+            "train_imsize": 448,
+            "test_imsize": 576,
+            "RA_level": "415",
+            "drop_rate": 0.5,
+        },
+        "F7": {
+            "width": [256, 512, 1536, 1536],
+            "depth": [8, 16, 48, 24],
+            "train_imsize": 480,
+            "test_imsize": 608,
+            "RA_level": "415",
+            "drop_rate": 0.5,
+        },
+    }
+)
+
+# Minor variants FN+, slightly wider
+nfnet_params.update(
+    **{
+        **{
+            f"{key}+": {
+                **nfnet_params[key],
+                "width": [384, 768, 2048, 2048],
+            }
+            for key in nfnet_params
+        }
+    }
+)
+
+# Nonlinearities with magic constants (gamma) baked in.
+# Note that not all nonlinearities will be stable, especially if they are
+# not perfectly monotonic. Good choices include relu, silu, and gelu.
+nonlinearities = {
+    "identity": lambda x: x,
+    "celu": lambda x: jax.nn.celu(x) * 1.270926833152771,
+    "elu": lambda x: jax.nn.elu(x) * 1.2716004848480225,
+    "gelu": lambda x: jax.nn.gelu(x) * 1.7015043497085571,
+    "glu": lambda x: jax.nn.glu(x) * 1.8484294414520264,
+    "leaky_relu": lambda x: jax.nn.leaky_relu(x) * 1.70590341091156,
+    "log_sigmoid": lambda x: jax.nn.log_sigmoid(x) * 1.9193484783172607,
+    "log_softmax": lambda x: jax.nn.log_softmax(x) * 1.0002083778381348,
+    "relu": lambda x: jax.nn.relu(x) * 1.7139588594436646,
+    "relu6": lambda x: jax.nn.relu6(x) * 1.7131484746932983,
+    "selu": lambda x: jax.nn.selu(x) * 1.0008515119552612,
+    "sigmoid": lambda x: jax.nn.sigmoid(x) * 4.803835391998291,
+    "silu": lambda x: jax.nn.silu(x) * 1.7881293296813965,
+    "soft_sign": lambda x: jax.nn.soft_sign(x) * 2.338853120803833,
+    "softplus": lambda x: jax.nn.softplus(x) * 1.9203323125839233,
+    "tanh": lambda x: jnp.tanh(x) * 1.5939117670059204,
+}
+
+
+class WSConv2D(hk.Conv2D):
+    """2D Convolution with Scaled Weight Standardization and affine gain+bias."""
+
+    @hk.transparent
+    def standardize_weight(self, weight, eps=1e-4):
+        """Apply scaled WS with affine gain."""
+        mean = jnp.mean(weight, axis=(0, 1, 2), keepdims=True)
+        var = jnp.var(weight, axis=(0, 1, 2), keepdims=True)
+        fan_in = np.prod(weight.shape[:-1])
+        # Get gain
+        gain = hk.get_parameter(
+            "gain", shape=(weight.shape[-1],), dtype=weight.dtype, init=jnp.ones
+        )
+        # Manually fused normalization, eq. to (w - mean) * gain / sqrt(N * var)
+        scale = jax.lax.rsqrt(jnp.maximum(var * fan_in, eps)) * gain
+        shift = mean * scale
+        return weight * scale - shift
+
+    def __call__(self, inputs: jnp.ndarray, eps: float = 1e-4) -> jnp.ndarray:
+        w_shape = self.kernel_shape + (
+            inputs.shape[self.channel_index] // self.feature_group_count,
+            self.output_channels,
+        )
+        # Use fan-in scaled init, but WS is largely insensitive to this choice.
+        w_init = hk.initializers.VarianceScaling(1.0, "fan_in", "normal")
+        w = hk.get_parameter("w", w_shape, inputs.dtype, init=w_init)
+        weight = self.standardize_weight(w, eps)
+        out = jax.lax.conv_general_dilated(
+            inputs,
+            weight,
+            window_strides=self.stride,
+            padding=self.padding,
+            lhs_dilation=self.lhs_dilation,
+            rhs_dilation=self.kernel_dilation,
+            dimension_numbers=self.dimension_numbers,
+            feature_group_count=self.feature_group_count,
+        )
+        # Always add bias
+        bias_shape = (self.output_channels,)
+        bias = hk.get_parameter("bias", bias_shape, inputs.dtype, init=jnp.zeros)
+        return out + bias
+
+
+def signal_metrics(x, i):
+    """Things to measure about a NCHW tensor activation."""
+    metrics = {}
+    # Average channel-wise mean-squared
+    metrics[f"avg_sq_mean_{i}"] = jnp.mean(jnp.mean(x, axis=[0, 1, 2]) ** 2)
+    # Average channel variance
+    metrics[f"avg_var_{i}"] = jnp.mean(jnp.var(x, axis=[0, 1, 2]))
+    return metrics
+
+
+def count_conv_flops(in_ch, conv, h, w):
+    """For a conv layer with in_ch inputs, count the FLOPS."""
+    # How many outputs are we producing? Note this is wrong for VALID padding.
+    output_shape = conv.output_channels * (h * w) / np.prod(conv.stride)
+    # At each OHW location we do computation equal to (I//G) * kh * kw
+    flop_per_loc = in_ch / conv.feature_group_count
+    flop_per_loc *= np.prod(conv.kernel_shape)
+    return output_shape * flop_per_loc
+
+
+class SqueezeExcite(hk.Module):
+    """Simple Squeeze+Excite module."""
+
+    def __init__(
+        self,
+        in_ch,
+        out_ch,
+        se_ratio=0.5,
+        hidden_ch=None,
+        activation=jax.nn.relu,
+        name=None,
+    ):
+        super().__init__(name=name)
+        self.in_ch, self.out_ch = in_ch, out_ch
+        if se_ratio is None:
+            if hidden_ch is None:
+                raise ValueError("Must provide one of se_ratio or hidden_ch")
+            self.hidden_ch = hidden_ch
+        else:
+            self.hidden_ch = max(1, int(self.in_ch * se_ratio))
+        self.activation = activation
+        self.fc0 = hk.Linear(self.hidden_ch, with_bias=True)
+        self.fc1 = hk.Linear(self.out_ch, with_bias=True)
+
+    def __call__(self, x):
+        h = jnp.mean(x, axis=[1, 2])  # Mean pool over HW extent
+        h = self.fc1(self.activation(self.fc0(h)))
+        h = jax.nn.sigmoid(h)[:, None, None]  # Broadcast along H, W
+        return h
+
+
+class StochDepth(hk.Module):
+    """Batchwise Dropout used in EfficientNet, optionally sans rescaling."""
+
+    def __init__(self, drop_rate, scale_by_keep=False, name=None):
+        super().__init__(name=name)
+        self.drop_rate = drop_rate
+        self.scale_by_keep = scale_by_keep
+
+    def __call__(self, x, is_training) -> jnp.ndarray:
+        if not is_training:
+            return x
+        batch_size = x.shape[0]
+        r = jax.random.uniform(hk.next_rng_key(), [batch_size, 1, 1, 1], dtype=x.dtype)
+        keep_prob = 1.0 - self.drop_rate
+        binary_tensor = jnp.floor(keep_prob + r)
+        if self.scale_by_keep:
+            x = x / keep_prob
+        return x * binary_tensor
 
 
 class NFNet(hk.Module):
@@ -31,7 +250,7 @@ class NFNet(hk.Module):
       Recognition Without Normalization.
     """
 
-    variant_dict = base.nfnet_params
+    variant_dict = nfnet_params
 
     def __init__(
         self,
@@ -63,12 +282,12 @@ class NFNet(hk.Module):
         self.bneck_pattern = block_params.get("expansion", [0.5] * 4)
         self.group_pattern = block_params.get("group_width", [128] * 4)
         self.big_pattern = block_params.get("big_width", [True] * 4)
-        self.activation = base.nonlinearities[activation]
+        self.activation = nonlinearities[activation]
         if drop_rate is None:
             self.drop_rate = block_params["drop_rate"]
         else:
             self.drop_rate = drop_rate
-        self.which_conv = base.WSConv2D
+        self.which_conv = WSConv2D
         # Stem
         ch = self.width_pattern[0] // 2
         self.stem = hk.Sequential(
@@ -164,12 +383,12 @@ class NFNet(hk.Module):
         outputs = {}
         out = self.stem(x)
         if return_metrics:
-            outputs.update(base.signal_metrics(out, 0))
+            outputs.update(signal_metrics(out, 0))
         # Blocks
         for i, block in enumerate(self.blocks):
             out, res_avg_var = block(out, is_training=is_training)
             if return_metrics:
-                outputs.update(base.signal_metrics(out, i + 1))
+                outputs.update(signal_metrics(out, i + 1))
                 outputs[f"res_avg_var_{i}"] = res_avg_var
         # Final-conv->activation, pool, dropout, classify
         out = self.activation(self.final_conv(out))
@@ -186,7 +405,7 @@ class NFNet(hk.Module):
         ch = 3
         for module in self.stem.layers:
             if isinstance(module, hk.Conv2D):
-                flops += [base.count_conv_flops(ch, module, h, w)]
+                flops += [count_conv_flops(ch, module, h, w)]
                 if any([item > 1 for item in module.stride]):
                     h, w = h / module.stride[0], w / module.stride[1]
                 ch = module.output_channels
@@ -197,7 +416,7 @@ class NFNet(hk.Module):
                 h, w = h / block.stride, w / block.stride
         # Head module FLOPs
         out_ch = self.blocks[-1].out_ch
-        flops += [base.count_conv_flops(out_ch, self.final_conv, h, w)]
+        flops += [count_conv_flops(out_ch, self.final_conv, h, w)]
         # Count flops for classifier
         flops += [self.final_conv.output_channels * self.fc.output_size]
         return flops, sum(flops)
@@ -217,7 +436,7 @@ class NFBlock(hk.Module):
         stride=1,
         beta=1.0,
         alpha=0.2,
-        which_conv=base.WSConv2D,
+        which_conv=WSConv2D,
         activation=jax.nn.gelu,
         big_width=True,
         use_two_convs=True,
@@ -271,7 +490,7 @@ class NFBlock(hk.Module):
                 self.out_ch, kernel_shape=1, padding="SAME", name="conv_shortcut"
             )
         # Squeeze + Excite Module
-        self.se = base.SqueezeExcite(self.out_ch, self.out_ch, self.se_ratio)
+        self.se = SqueezeExcite(self.out_ch, self.out_ch, self.se_ratio)
 
         # Are we using stochastic depth?
         self._has_stochdepth = (
@@ -280,7 +499,7 @@ class NFBlock(hk.Module):
             and stochdepth_rate < 1.0
         )
         if self._has_stochdepth:
-            self.stoch_depth = base.StochDepth(stochdepth_rate)
+            self.stoch_depth = StochDepth(stochdepth_rate)
 
     def __call__(self, x, is_training):
         out = self.activation(x) * self.beta
@@ -311,20 +530,20 @@ class NFBlock(hk.Module):
 
     def count_flops(self, h, w):
         # Count conv FLOPs based on input HW
-        expand_flops = base.count_conv_flops(self.in_ch, self.conv0, h, w)
+        expand_flops = count_conv_flops(self.in_ch, self.conv0, h, w)
         # If block is strided we decrease resolution here.
-        dw_flops = base.count_conv_flops(self.width, self.conv1, h, w)
+        dw_flops = count_conv_flops(self.width, self.conv1, h, w)
         if self.stride > 1:
             h, w = h / self.stride, w / self.stride
         if self.use_two_convs:
-            dw_flops += base.count_conv_flops(self.width, self.conv1b, h, w)
+            dw_flops += count_conv_flops(self.width, self.conv1b, h, w)
 
         if self.use_projection:
-            sc_flops = base.count_conv_flops(self.in_ch, self.conv_shortcut, h, w)
+            sc_flops = count_conv_flops(self.in_ch, self.conv_shortcut, h, w)
         else:
             sc_flops = 0
         # SE flops happen on avg-pooled activations
         se_flops = self.se.fc0.output_size * self.out_ch
         se_flops += self.se.fc0.output_size * self.se.fc1.output_size
-        contract_flops = base.count_conv_flops(self.width, self.conv2, h, w)
+        contract_flops = count_conv_flops(self.width, self.conv2, h, w)
         return sum([expand_flops, dw_flops, se_flops, contract_flops, sc_flops])

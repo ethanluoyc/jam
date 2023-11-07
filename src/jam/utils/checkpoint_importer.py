@@ -1,5 +1,8 @@
 import re
 
+import numpy as np
+import tree
+
 
 class CheckpointTranslator:
     def __init__(self):
@@ -30,3 +33,17 @@ class CheckpointTranslator:
         if unmatched:
             raise ValueError(f"Unmatched keys: f{unmatched.keys()}")
         return new_dict
+
+
+def as_numpy(nest):
+    return tree.map_structure(lambda x: np.asarray(x), nest)
+
+
+def load_torch_state_dict(path: str, numpy: bool = True):
+    import torch
+
+    state_dict = torch.load(path, map_location=torch.device("cpu"))
+    if numpy:
+        state_dict = as_numpy(state_dict)
+
+    return state_dict

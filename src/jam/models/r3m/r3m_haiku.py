@@ -4,19 +4,16 @@ import haiku as hk
 import jax
 import jax.numpy as jnp
 
-from jrm.models import resnet
-
-IMAGENET_MEAN_RGB = (0.485 * 255, 0.456 * 255, 0.406 * 255)
-IMAGENET_STDDEV_RGB = (0.229 * 255, 0.224 * 255, 0.225 * 255)
+from jam.models.resnet import resnet_haiku
 
 
 class R3M(hk.Module):
     def __init__(self, resnet_size: int, name: Optional[str] = "r3m"):
         super().__init__(name)
         resnet_cls = {
-            18: resnet.ResNet18,
-            34: resnet.ResNet34,
-            50: resnet.ResNet50,
+            18: resnet_haiku.ResNet18,
+            34: resnet_haiku.ResNet34,
+            50: resnet_haiku.ResNet50,
         }[resnet_size]
 
         bn_config = {"decay_rate": 0.9}
@@ -38,7 +35,7 @@ class R3M(hk.Module):
             out = network.initial_batchnorm(out, is_training, test_local_stats)
             out = jax.nn.relu(out)
 
-        out = resnet.max_pool(
+        out = resnet_haiku.max_pool(
             out,
             window_shape=(1, 3, 3, 1),
             strides=(1, 2, 2, 1),

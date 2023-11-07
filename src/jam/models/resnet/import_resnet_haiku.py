@@ -1,7 +1,7 @@
+# type: ignore
 import numpy as np
-import tree
 
-from jrm.utils import checkpoint_importer
+from jam.utils import checkpoint_importer
 
 resnet_importer = checkpoint_importer.CheckpointTranslator()
 
@@ -93,9 +93,7 @@ def final_logits(key, val, slot):
 
 
 def restore_from_torch_checkpoint(state_dict, name):
-    converted_dict = resnet_importer.apply(
-        tree.map_structure(lambda x: x.numpy(), state_dict)
-    )
+    converted_dict = resnet_importer.apply(checkpoint_importer.as_numpy(state_dict))
     converted_dict = {f"{name}/~/{k}": v for k, v in converted_dict.items()}
     for k in list(converted_dict.keys()):
         if k.endswith("mean_ema/counter"):

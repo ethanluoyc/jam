@@ -1,1 +1,2 @@
-# jam
+# JAM - JAX models
+
