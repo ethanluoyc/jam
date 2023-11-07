@@ -1,3 +1,7 @@
+[build-system]
+requires = ["pdm-backend"]
+build-backend = "pdm.backend"
+
 [project]
 name = "jam"
 version = "0.1.0"
@@ -5,11 +9,94 @@ description = ""
 authors = [
     {name = "Yicheng Luo", email = "ethanluoyc@gmail.com"},
 ]
-dependencies = []
+dependencies = [
+    "transformers>=4.35.0",
+    "absl-py>=2.0.0",
+    "jax[cuda12_pip]>=0.4.20",
+    "dm-haiku>=0.0.10",
+    "flax>=0.7.5",
+    "dm-tree>=0.1.8",
+]
 requires-python = ">=3.9,<3.11"
 readme = "README.md"
 license = {text = "MIT"}
 
-[build-system]
-requires = ["pdm-backend"]
-build-backend = "pdm.backend"
+[[tool.pdm.source]]
+name = "jax_cuda"
+url = "https://storage.googleapis.com/jax-releases/jax_cuda_releases.html"
+verify_ssl = true
+type = "find_links"
+
+[[tool.pdm.source]]
+name = "torch_cpu"
+url = "https://download.pytorch.org/whl/cpu"
+verify_ssl = true
+type = "index"
+
+
+[tool.pdm.scripts]
+test.cmd = "pytest -rf --durations=10"
+test.env = {JAX_DISBLAE_MOST_OPTIMIZATIONS = "1", CUDA_VISIBLE_DEVICES = ""}
+lint.shell = "ruff . && black --check --diff ."
+fmt.shell = "ruff --fix . && black ."
+
+[tool.pdm.dev-dependencies]
+dev = [
+    "torch>=2.1.0",
+    "torchvision>=0.16.0",
+    "mvp @ git+https://github.com/ir413/mvp.git",
+    "r3m @ git+https://github.com/facebookresearch/r3m.git",
+    "black>=23.10.1",
+    "ruff>=0.1.4",
+]
+[tool.black]
+line-length = 88
+target-version = ['py39', 'py310']
+include = '\.pyi?$'
+exclude = '''
+/(
+    \.eggs
+  | \.git
+  | \.github
+  | \.venv
+  | docs
+  | third_party
+  | scratch
+)/
+'''
+
+[tool.ruff]
+line-length = 120
+select = [
+  "E", # pycodestyle
+  "F", # pyflakes
+  "I",
+]
+ignore = ["E731"]
+exclude = ["third_party", ".venv"]
+
+[tool.ruff.extend-per-file-ignores]
+"__init__.py" = ["F401"]
+
+[tool.ruff.isort]
+known-first-party = ["jrm", "jam"]
+force-single-line = true
+force-sort-within-sections = true
+single-line-exclusions = ["typing"]
+
+[tool.ruff.flake8-tidy-imports]
+ban-relative-imports = "all"
+
+[tool.pyright]
+include = ["src"]
+exclude = ["**/node_modules", "**/__pycache__"]
+
+reportMissingImports = true
+reportMissingTypeStubs = false
+
+pythonVersion = "3.10"
+pythonPlatform = "Linux"
+
+[tool.pytest.ini_options]
+minversion = "6.0"
+testpaths = ["tests"]
