@@ -48,6 +48,9 @@ dev = [
     "r3m @ git+https://github.com/facebookresearch/r3m.git",
     "black>=23.10.1",
     "ruff>=0.1.4",
+    "dill>=0.3.7",
+    "Pillow>=10.1.0",
+    "ipykernel>=6.26.0",
 ]
 [tool.black]
 line-length = 88
