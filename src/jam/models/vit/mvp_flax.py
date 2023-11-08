@@ -52,14 +52,14 @@ CHECKPOINTS = {
         "ckpt_url": "https://berkeley.box.com/shared/static/m93ynem558jo8vltlads5rcmnahgsyzr.pth",
         "ckpt_md5": "fe6e30eb4256fae298ea0a6c6b4c1ae7",
     },
-    "vits-mae-in": {
-        "ckpt_url": "https://berkeley.box.com/shared/static/qlsjkv03nngu37eyvtjikfe7rz14k66d.pth",
-        "ckpt_md5": "29a004bd4332f97cd22f55c1da26bc15",
-    },
-    "vits-sup-in": {
-        "ckpt_url": "https://berkeley.box.com/shared/static/95a4ncqrh1o7llne2b1gpsfip4dt65m4.pth",
-        "ckpt_md5": "f8f23ba960af1017783c9b975875d36d",
-    },
+    # "vits-mae-in": {
+    #     "ckpt_url": "https://berkeley.box.com/shared/static/qlsjkv03nngu37eyvtjikfe7rz14k66d.pth",
+    #     "ckpt_md5": "29a004bd4332f97cd22f55c1da26bc15",
+    # },
+    # "vits-sup-in": {
+    #     "ckpt_url": "https://berkeley.box.com/shared/static/95a4ncqrh1o7llne2b1gpsfip4dt65m4.pth",
+    #     "ckpt_md5": "f8f23ba960af1017783c9b975875d36d",
+    # },
     "vitb-mae-egosoup": {
         "ckpt_url": "https://berkeley.box.com/shared/static/0ckepd2ja3pi570z89ogd899cn387yut.pth",
         "ckpt_md5": "526093597ac1dc55df618bcbdfe8da4a",

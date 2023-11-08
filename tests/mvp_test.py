@@ -19,8 +19,6 @@ class MVPCheckpointTest(parameterized.TestCase):
     @parameterized.parameters(
         ("vitb-mae-egosoup",),
         ("vits-mae-hoi",),
-        ("vits-mae-in",),
-        ("vits-sup-in",),
         ("vitl-256-mae-egosoup",),
     )
     def test_import_mvp_weights(self, model_name):

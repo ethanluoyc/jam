@@ -1,8 +1,8 @@
 import numpy as np
 
-from jam.utils import checkpoint_importer
+from jam.utils import checkpoint_utils
 
-timm_vit_importer = checkpoint_importer.CheckpointTranslator()
+timm_vit_importer = checkpoint_utils.CheckpointTranslator()
 
 
 @timm_vit_importer.add(r"cls_token")
@@ -79,7 +79,7 @@ def encoder_norm(key, val, slot):
 def restore_from_torch_checkpoint(state_dict):
     import flax
 
-    state_dict_np = checkpoint_importer.as_numpy(state_dict)
+    state_dict_np = checkpoint_utils.as_numpy(state_dict)
     converted = timm_vit_importer.apply(state_dict_np)
     fixup = {}
     for k, v in converted.items():

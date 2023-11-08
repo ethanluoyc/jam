@@ -1,9 +1,9 @@
 # type: ignore
 import numpy as np
 
-from jam.utils import checkpoint_importer
+from jam.utils import checkpoint_utils
 
-resnet_importer = checkpoint_importer.CheckpointTranslator()
+resnet_importer = checkpoint_utils.CheckpointTranslator()
 
 
 def transpose_conv_weights(w):
@@ -93,7 +93,7 @@ def final_logits(key, val, slot):
 
 
 def restore_from_torch_checkpoint(state_dict, name):
-    converted_dict = resnet_importer.apply(checkpoint_importer.as_numpy(state_dict))
+    converted_dict = resnet_importer.apply(checkpoint_utils.as_numpy(state_dict))
     converted_dict = {f"{name}/~/{k}": v for k, v in converted_dict.items()}
     for k in list(converted_dict.keys()):
         if k.endswith("mean_ema/counter"):
