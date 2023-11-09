@@ -1,11 +1,24 @@
-"""Architecture definitions for different models."""
-from typing import Any, Optional
+"""Architecture definitions for NFNets."""
+from typing import Any, Optional, Sequence, Tuple, Union
 
 import flax
 from flax import linen as nn
+from flax.linen import initializers
+from flax.linen.dtypes import promote_dtype
+from flax.linen.linear import canonicalize_padding
 import jax
+from jax import lax
 import jax.numpy as jnp
 import numpy as np
+
+PRNGKey = jax.Array
+Shape = Tuple[int, ...]
+Dtype = Any
+Array = Any
+PrecisionLike = Union[
+    None, str, lax.Precision, Tuple[str, str], Tuple[lax.Precision, lax.Precision]
+]
+default_kernel_init = initializers.lecun_normal()
 
 # F-series models
 nfnet_params = {
@@ -120,8 +133,50 @@ def _conv_dimension_numbers(input_shape):
     return jax.lax.ConvDimensionNumbers(lhs_spec, rhs_spec, out_spec)
 
 
-class WSConv2D(nn.Conv):
-    """2D Convolution with Scaled Weight Standardization and affine gain+bias."""
+class WSConv2D(nn.Module):
+    """2D Convolution with Scaled Weight Standardization and affine gain+bias.
+
+    Attributes:
+      features: number of convolution filters.
+      kernel_size: shape of the convolutional kernel.
+      strides: an integer or a sequence of `n` integers, representing the
+        inter-window strides (default: 1).
+      padding: either the string `'SAME'`, the string `'VALID'`, or a sequence
+        of `n` `(low, high)` integer pairs that give the padding to apply before and
+        after each spatial dimension. A single int is interpreted as applying the same padding
+        in all dims and assign a single int in a sequence causes the same padding
+        to be used on both sides. `'CAUSAL'` padding for a 1D convolution will
+        left-pad the convolution axis, resulting in same-sized output.
+      input_dilation: an integer or a sequence of `n` integers, giving the
+        dilation factor to apply in each spatial dimension of `inputs`
+        (default: 1). Convolution with input dilation `d` is equivalent to
+        transposed convolution with stride `d`.
+      kernel_dilation: an integer or a sequence of `n` integers, giving the
+        dilation factor to apply in each spatial dimension of the convolution
+        kernel (default: 1). Convolution with kernel dilation
+        is also known as 'atrous convolution'.
+      feature_group_count: integer, default 1. If specified divides the input
+        features into groups.
+      use_bias: whether to add a bias to the output (default: True).
+      mask: Optional mask for the weights during masked convolution. The mask must
+            be the same shape as the convolution weight matrix.
+      dtype: the dtype of the computation (default: infer from input and params).
+      param_dtype: the dtype passed to parameter initializers (default: float32).
+      precision: numerical precision of the computation see `jax.lax.Precision`
+        for details.
+    """
+
+    features: int
+    kernel_size: Sequence[int]
+    strides: Union[None, int, Sequence[int]] = 1
+    padding: Union[str, int, Sequence[Union[int, Tuple[int, int]]]] = "SAME"
+    input_dilation: Union[None, int, Sequence[int]] = 1
+    kernel_dilation: Union[None, int, Sequence[int]] = 1
+    feature_group_count: int = 1
+    mask: Optional[Array] = None
+    dtype: Optional[Dtype] = None
+    param_dtype: Dtype = jnp.float32
+    precision: PrecisionLike = None
 
     def standardize_weight(self, weight, eps=1e-4):
         """Apply scaled WS with affine gain."""
@@ -138,68 +193,112 @@ class WSConv2D(nn.Conv):
         return weight * scale - shift
 
     @nn.compact
-    def __call__(self, inputs: jnp.ndarray, eps: float = 1e-4) -> jnp.ndarray:
-        assert len(inputs.shape) == 4
+    def __call__(self, inputs: jax.Array, eps: float = 1e-4) -> jax.Array:
+        """Applies a (potentially unshared) convolution to the inputs.
 
-        channel_index = -1
-        w_shape = tuple(self.kernel_size) + (
-            inputs.shape[channel_index] // self.feature_group_count,
+        Args:
+          inputs: input data with dimensions (*batch_dims, spatial_dims...,
+            features). This is the channels-last convention, i.e. NHWC for a 2d
+            convolution and NDHWC for a 3D convolution. Note: this is different from
+            the input convention used by `lax.conv_general_dilated`, which puts the
+            spatial dimensions last.
+            Note: If the input has more than 1 batch dimension, all batch dimensions
+            are flattened into a single dimension for the convolution and restored
+            before returning.  In some cases directly vmap'ing the layer may yield
+            better performance than this default flattening approach.  If the input
+            lacks a batch dimension it will be added for the convolution and removed
+            n return, an allowance made to enable writing single-example code.
+
+        Returns:
+          The convolved data.
+        """
+
+        if isinstance(self.kernel_size, int):
+            raise TypeError(
+                "Expected Conv kernel_size to be a"
+                " tuple/list of integers (eg.: [3, 3]) but got"
+                f" {self.kernel_size}."
+            )
+        else:
+            kernel_size = tuple(self.kernel_size)
+            if len(kernel_size) != 2:
+                raise ValueError(
+                    "Convolution currently only supports 2 spatial dimensions."
+                )
+
+        def maybe_broadcast(x: Optional[Union[int, Sequence[int]]]) -> Tuple[int, ...]:
+            if x is None:
+                # backward compatibility with using None as sentinel for
+                # broadcast 1
+                x = 1
+            if isinstance(x, int):
+                return (x,) * len(kernel_size)
+            return tuple(x)
+
+        # Combine all input batch dimensions into a single leading batch axis.
+        num_batch_dimensions = inputs.ndim - (len(kernel_size) + 1)
+        if num_batch_dimensions != 1:
+            input_batch_shape = inputs.shape[:num_batch_dimensions]
+            total_batch_size = int(np.prod(input_batch_shape))
+            flat_input_shape = (total_batch_size,) + inputs.shape[num_batch_dimensions:]
+            inputs = jnp.reshape(inputs, flat_input_shape)
+
+        # self.strides or (1,) * (inputs.ndim - 2)
+        strides = maybe_broadcast(self.strides)
+        input_dilation = maybe_broadcast(self.input_dilation)
+        kernel_dilation = maybe_broadcast(self.kernel_dilation)
+
+        padding_lax = canonicalize_padding(self.padding, len(kernel_size))
+        if isinstance(padding_lax, str) and padding_lax not in ["SAME", "VALID"]:
+            raise ValueError("padding must be 'SAME', 'VALID', or sequence of ints")
+
+        dimension_numbers = _conv_dimension_numbers(inputs.shape)
+        in_features = jnp.shape(inputs)[-1]
+
+        # One shared convolutional kernel for all pixels in the output.
+        assert in_features % self.feature_group_count == 0
+        kernel_shape = kernel_size + (
+            in_features // self.feature_group_count,
             self.features,
         )
-        # Use fan-in scaled init, but WS is largely insensitive to this choice.
-        w_init = nn.initializers.variance_scaling(1.0, "fan_in", "normal")
-        w = self.param("kernel", w_init, w_shape, inputs.dtype)
-        weight = self.standardize_weight(w, eps)
-        assert isinstance(self.padding, str)
 
-        if self.strides is None:
-            strides = 1
-        else:
-            strides = self.strides
+        if self.mask is not None and self.mask.shape != kernel_shape:
+            raise ValueError(
+                "Mask needs to have the same shape as weights. "
+                f"Shapes are: {self.mask.shape}, {kernel_shape}"
+            )
 
-        if isinstance(strides, int):
-            strides = tuple([strides] * len(self.kernel_size))
-        else:
-            strides = tuple(strides)
+        kernel_init = nn.initializers.variance_scaling(1.0, "fan_in", "normal")
+        kernel = self.param("kernel", kernel_init, kernel_shape, self.param_dtype)
+        kernel = self.standardize_weight(kernel, eps)
 
-        if self.kernel_dilation is None:
-            kernel_dilation = 1
-        else:
-            kernel_dilation = self.kernel_dilation
+        if self.mask is not None:
+            kernel *= self.mask
 
-        if isinstance(kernel_dilation, int):
-            kernel_dilation = tuple([kernel_dilation] * len(self.kernel_size))
-        else:
-            kernel_dilation = tuple(kernel_dilation)
+        bias_shape = (self.features,)
+        bias_init = nn.initializers.zeros_init()
+        bias = self.param("bias", bias_init, bias_shape, self.param_dtype)
 
-        if self.input_dilation is None:
-            input_dilation = 1
-        else:
-            input_dilation = self.input_dilation
-
-        if isinstance(input_dilation, int):
-            input_dilation = tuple([input_dilation] * len(self.kernel_size))
-        else:
-            input_dilation = tuple(input_dilation)
-
-        out = jax.lax.conv_general_dilated(
+        inputs, kernel, bias = promote_dtype(inputs, kernel, bias, dtype=self.dtype)
+        y = lax.conv_general_dilated(
             inputs,
-            weight,
-            window_strides=strides,
-            padding=self.padding,
+            kernel,
+            strides,
+            padding_lax,
             lhs_dilation=input_dilation,
             rhs_dilation=kernel_dilation,
-            dimension_numbers=_conv_dimension_numbers(inputs.shape),
+            dimension_numbers=dimension_numbers,
             feature_group_count=self.feature_group_count,
             precision=self.precision,
         )
 
-        # Always add bias
-        bias_shape = (self.features,)
-        bias = self.param(
-            "bias", nn.initializers.zeros_init(), bias_shape, inputs.dtype
-        )
-        return out + bias
+        bias = bias.reshape((1,) * (y.ndim - bias.ndim) + bias.shape)
+        y += bias
+
+        if num_batch_dimensions != 1:
+            output_shape = input_batch_shape + y.shape[1:]  # type: ignore
+            y = jnp.reshape(y, output_shape)
+        return y
 
 
 def signal_metrics(x, i):
@@ -244,12 +343,13 @@ class StochDepth(nn.Module):
 
     drop_rate: float
     scale_by_keep: bool = False
+    rng_collection: str = "dropout"
 
     def __call__(self, x, is_training) -> jnp.ndarray:
         if not is_training:
             return x
         batch_size = x.shape[0]
-        rng = self.make_rng("stochedepth")
+        rng = self.make_rng(self.rng_collection)
         r = jax.random.uniform(rng, [batch_size, 1, 1, 1], dtype=x.dtype)
         keep_prob = 1.0 - self.drop_rate
         binary_tensor = jnp.floor(keep_prob + r)
@@ -384,6 +484,12 @@ class NFNet(nn.Module):
             fc_init = nn.initializers.normal(stddev=0.01)
         else:
             fc_init = self.fc_init
+        dropout_rate = self.drop_rate
+        if dropout_rate is None:
+            dropout_rate = block_params["drop_rate"]
+        if dropout_rate is None:
+            dropout_rate = 0.0
+        self.dropout = nn.Dropout(dropout_rate)
         self.fc = nn.Dense(
             self.num_classes, kernel_init=fc_init, use_bias=True, name="linear"
         )
@@ -402,21 +508,13 @@ class NFNet(nn.Module):
                 outputs.update(signal_metrics(out, i + 1))
                 outputs[f"res_avg_var_{i}"] = res_avg_var
         # Final-conv->activation, pool, dropout, classify
-        block_params = self.variant_dict[self.variant]
-        if self.drop_rate is None:
-            drop_rate = block_params["drop_rate"]
-        else:
-            drop_rate = self.drop_rate
-
         activation = nonlinearities[self.activation]
 
         out = activation(self.final_conv(out))
         pool = jnp.mean(out, [1, 2])
         outputs["pool"] = pool
         # Optionally apply dropout
-        if drop_rate > 0.0 and is_training:
-            dropout = nn.Dropout(drop_rate)
-            pool = dropout(pool)
+        pool = self.dropout(pool, deterministic=not is_training)
         outputs["logits"] = self.fc(pool)
         return outputs
 
@@ -447,7 +545,7 @@ class NFBlock(nn.Module):
         width = self.group_size * groups
 
         use_projection = self.stride > 1 or self.in_ch != self.out_ch
-        _has_stochdepth = (
+        use_stochdepth = (
             self.stochdepth_rate is not None
             and self.stochdepth_rate > 0.0
             and self.stochdepth_rate < 1.0
@@ -488,7 +586,7 @@ class NFBlock(nn.Module):
         )
 
         # Are we using stochastic depth?
-        if _has_stochdepth:
+        if use_stochdepth:
             stoch_depth = StochDepth(self.stochdepth_rate)  # type: ignore
 
         out = self.activation(x) * self.beta
@@ -511,7 +609,7 @@ class NFBlock(nn.Module):
         # Get average residual standard deviation for reporting metrics.
         res_avg_var = jnp.mean(jnp.var(out, axis=[0, 1, 2]))
         # Apply stochdepth if applicable.
-        if _has_stochdepth:
+        if use_stochdepth:
             out = stoch_depth(out, is_training)  # type: ignore
         # SkipInit Gain
         out = out * self.param("skip_gain", nn.initializers.zeros_init(), (), out.dtype)
