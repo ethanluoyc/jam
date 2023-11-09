@@ -1,6 +1,5 @@
 from absl.testing import absltest
 from absl.testing import parameterized
-import flax
 import haiku as hk
 import numpy as np
 from r3m import load_r3m
@@ -8,42 +7,13 @@ from safetensors.flax import load_file
 import torch
 
 from jam import imagenet_util
-from jam.models.r3m import r3m_flax
-from jam.models.r3m import r3m_haiku
-from jam.models.resnet import import_resnet_flax
-from jam.models.resnet import import_resnet_haiku
+from jam.flax import r3m as r3m_flax
+from jam.haiku import r3m as r3m_haiku
 
 
 def _load_pretrained_checkpoint(model_name):
     state_dict = load_file(f"data/checkpoints/r3m/{model_name}/torch_model.safetensors")
     return state_dict
-
-
-def restore_from_torch_checkpoint_haiku(state_dict):
-    filtered_state_dict = {}
-
-    for k, v in state_dict.items():
-        if k.startswith("convnet."):
-            filtered_state_dict[k[8:]] = v
-
-    return import_resnet_haiku.restore_from_torch_checkpoint(
-        filtered_state_dict, name="r3m/~/convnet"
-    )
-
-
-def restore_from_torch_checkpoint_flax(state_dict):
-    filtered_state_dict = {}
-
-    for k, v in state_dict.items():
-        if k.startswith("convnet."):
-            filtered_state_dict[k[8:]] = v
-
-    restored = import_resnet_flax.restore_from_torch_checkpoint(filtered_state_dict)
-    variables = flax.traverse_util.unflatten_dict(restored, sep="/")
-
-    variables["params"] = {"convnet": variables["params"]}
-    variables["batch_stats"] = {"convnet": variables["batch_stats"]}
-    return variables
 
 
 R3M_RESNET_MODELS = ["r3m-18", "r3m-34", "r3m-50"]
@@ -68,7 +38,7 @@ class R3MCheckpointTest(parameterized.TestCase):
         resnet_hk = hk.without_apply_rng(hk.transform_with_state(forward))
 
         state_dict = _load_pretrained_checkpoint(model_name)
-        restore_params, restore_state = restore_from_torch_checkpoint_haiku(state_dict)
+        restore_params, restore_state = r3m_haiku.load_from_torch_checkpoint(state_dict)
 
         # N, H, W, C
         image = np.random.randint(0, 255, (10, 224, 224, 3), dtype=np.uint8).astype(
@@ -96,7 +66,7 @@ class R3MCheckpointTest(parameterized.TestCase):
         )
 
         state_dict = _load_pretrained_checkpoint(model_name)
-        restored_variables = restore_from_torch_checkpoint_flax(state_dict)
+        restored_variables = r3m_flax.load_from_torch_checkpoint(state_dict)
 
         embedding = self._predict_torch(r3m, image)
 

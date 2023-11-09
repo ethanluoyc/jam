@@ -518,7 +518,7 @@ class NFBlock(nn.Module):
         return out * self.alpha + shortcut, res_avg_var
 
 
-def convert_haiku_checkpoint(haiku_params):
+def load_from_haiku_checkpoint(haiku_params):
     flat_params = {}
     for module_name, pdict in haiku_params.items():
         for name, value in pdict.items():

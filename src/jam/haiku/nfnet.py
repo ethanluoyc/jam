@@ -181,16 +181,6 @@ def signal_metrics(x, i):
     return metrics
 
 
-def count_conv_flops(in_ch, conv, h, w):
-    """For a conv layer with in_ch inputs, count the FLOPS."""
-    # How many outputs are we producing? Note this is wrong for VALID padding.
-    output_shape = conv.output_channels * (h * w) / np.prod(conv.stride)
-    # At each OHW location we do computation equal to (I//G) * kh * kw
-    flop_per_loc = in_ch / conv.feature_group_count
-    flop_per_loc *= np.prod(conv.kernel_shape)
-    return output_shape * flop_per_loc
-
-
 class SqueezeExcite(hk.Module):
     """Simple Squeeze+Excite module."""
 
@@ -400,27 +390,6 @@ class NFNet(hk.Module):
         outputs["logits"] = self.fc(pool)
         return outputs
 
-    def count_flops(self, h, w):
-        flops = []
-        ch = 3
-        for module in self.stem.layers:
-            if isinstance(module, hk.Conv2D):
-                flops += [count_conv_flops(ch, module, h, w)]
-                if any([item > 1 for item in module.stride]):
-                    h, w = h / module.stride[0], w / module.stride[1]
-                ch = module.output_channels
-        # Body FLOPs
-        for block in self.blocks:
-            flops += [block.count_flops(h, w)]
-            if block.stride > 1:
-                h, w = h / block.stride, w / block.stride
-        # Head module FLOPs
-        out_ch = self.blocks[-1].out_ch
-        flops += [count_conv_flops(out_ch, self.final_conv, h, w)]
-        # Count flops for classifier
-        flops += [self.final_conv.output_channels * self.fc.output_size]
-        return flops, sum(flops)
-
 
 class NFBlock(hk.Module):
     """Normalizer-Free Net Block."""
@@ -527,23 +496,3 @@ class NFBlock(hk.Module):
         # SkipInit Gain
         out = out * hk.get_parameter("skip_gain", (), out.dtype, init=jnp.zeros)
         return out * self.alpha + shortcut, res_avg_var
-
-    def count_flops(self, h, w):
-        # Count conv FLOPs based on input HW
-        expand_flops = count_conv_flops(self.in_ch, self.conv0, h, w)
-        # If block is strided we decrease resolution here.
-        dw_flops = count_conv_flops(self.width, self.conv1, h, w)
-        if self.stride > 1:
-            h, w = h / self.stride, w / self.stride
-        if self.use_two_convs:
-            dw_flops += count_conv_flops(self.width, self.conv1b, h, w)
-
-        if self.use_projection:
-            sc_flops = count_conv_flops(self.in_ch, self.conv_shortcut, h, w)
-        else:
-            sc_flops = 0
-        # SE flops happen on avg-pooled activations
-        se_flops = self.se.fc0.output_size * self.out_ch
-        se_flops += self.se.fc0.output_size * self.se.fc1.output_size
-        contract_flops = count_conv_flops(self.width, self.conv2, h, w)
-        return sum([expand_flops, dw_flops, se_flops, contract_flops, sc_flops])

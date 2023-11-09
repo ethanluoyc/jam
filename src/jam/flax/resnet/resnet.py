@@ -414,10 +414,3 @@ def ResNet200(
         name=name,
         **CONFIGS[200],
     )
-
-
-if __name__ == "__main__":
-    resnet = ResNet18(10)
-    variables = resnet.init(
-        jax.random.PRNGKey(0), jnp.ones((1, 224, 224, 3)), use_running_average=False
-    )

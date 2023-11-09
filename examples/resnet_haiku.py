@@ -1,13 +1,13 @@
 import os
 
 from absl import app
+import haiku as hk
 import numpy as np
 from PIL import Image
 from safetensors.flax import load_file
 
 from jam import imagenet_util
-from jam.models.resnet import import_resnet_flax
-from jam.models.resnet import resnet_flax
+from jam.haiku import resnet
 
 NUM_CLASSES = 1000
 
@@ -22,26 +22,31 @@ def preprocess_image(im, imsize):
 
 def main(_):
     resnet_size = 50
-    flax_module_cls = getattr(resnet_flax, f"ResNet{resnet_size}")
+
+    haiku_module_cls = getattr(resnet, f"ResNet{resnet_size}")
     name = f"resnet{resnet_size}"
 
-    bn_config = {"momentum": 0.9}
-    initial_conv_config = {"padding": [3, 3]}
-    flax_module = flax_module_cls(
-        num_classes=NUM_CLASSES,
-        bn_config=bn_config,
-        initial_conv_config=initial_conv_config,
-    )
-    name = f"resnet{resnet_size}"
-    # # N, H, W, C
-    state_dict = load_file(f"data/checkpoints/resnet/{name}/torch_model.safetensors")
-    restored_variables = import_resnet_flax.restore_from_torch_checkpoint(state_dict)
+    def model_fn(x, is_training, test_local_stats=False):
+        bn_config = {"decay_rate": 0.9}
+        initial_conv_config = {
+            "padding": [3, 3],
+        }
+        return haiku_module_cls(
+            num_classes=1000,
+            bn_config=bn_config,
+            initial_conv_config=initial_conv_config,
+            name=name,
+        )(x, is_training=is_training, test_local_stats=test_local_stats)
 
+    model = hk.without_apply_rng(hk.transform_with_state(model_fn))
+    ckpt_path = f"data/checkpoints/resnet/{name}/torch_model.safetensors"
     image = Image.open(os.path.join("tests", "testdata", "peppers.jpg"))
     label = "bell pepper"
 
     x = preprocess_image(image, 224)
-    logits = flax_module.apply(restored_variables, x[None], use_running_average=True)
+    state_dict = load_file(ckpt_path)
+    (params, state) = resnet.load_from_torch_checkpoint(state_dict, name)
+    logits, _ = model.apply(params, state, x[None], is_training=False)
 
     which_class = imagenet_util.IMAGENET_CLASSLIST[int(logits.argmax())]
     print("Predicted class:", which_class)

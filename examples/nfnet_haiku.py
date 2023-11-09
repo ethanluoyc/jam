@@ -8,7 +8,7 @@ import numpy as np
 from PIL import Image
 
 from jam import imagenet_util
-from jam.models.nfnet import nfnet_haiku
+from jam.haiku import nfnet
 
 
 def preprocess_image(im, imsize):
@@ -26,11 +26,11 @@ def main(_):
     image = Image.open(os.path.join("tests", "testdata", "peppers.jpg"))
     label = "bell pepper"
 
-    imsize = nfnet_haiku.nfnet_params[variant]["test_imsize"]
+    imsize = nfnet.nfnet_params[variant]["test_imsize"]
 
     # Prepare the forward fn
     def forward(inputs, is_training):
-        model = nfnet_haiku.NFNet(num_classes=1000, variant=variant)
+        model = nfnet.NFNet(num_classes=1000, variant=variant)
         return model(inputs, is_training=is_training)["logits"]
 
     net = hk.without_apply_rng(hk.transform(forward))

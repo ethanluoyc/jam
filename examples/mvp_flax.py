@@ -3,8 +3,8 @@ import jax
 import numpy as np
 from safetensors.flax import load_file
 
-from jam.models.vit import import_vit
-from jam.models.vit import mvp_flax
+from jam.flax.vit import import_vit
+from jam.flax.vit import mvp_flax
 
 
 def main(_):

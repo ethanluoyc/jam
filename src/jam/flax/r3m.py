@@ -1,8 +1,10 @@
+import flax
 from flax import linen as nn
 import jax
 import jax.numpy as jnp
 
-from jam.models.resnet import resnet_flax
+from jam.flax.resnet import convert_torch_checkpoint
+from jam.flax.resnet import resnet
 
 
 class R3M(nn.Module):
@@ -10,9 +12,9 @@ class R3M(nn.Module):
 
     def setup(self):
         resnet_cls = {
-            18: resnet_flax.ResNet18,
-            34: resnet_flax.ResNet34,
-            50: resnet_flax.ResNet50,
+            18: resnet.ResNet18,
+            34: resnet.ResNet34,
+            50: resnet.ResNet50,
         }[self.resnet_size]
 
         bn_config = {"momentum": 0.9}
@@ -33,7 +35,7 @@ class R3M(nn.Module):
         out = network.initial_batchnorm(out, use_running_average=use_running_average)
         out = jax.nn.relu(out)
 
-        out = resnet_flax.max_pool(
+        out = resnet.max_pool(
             out,
             window_shape=(1, 3, 3, 1),
             strides=(1, 2, 2, 1),
@@ -45,3 +47,18 @@ class R3M(nn.Module):
 
         out = jnp.mean(out, axis=(1, 2))
         return out
+
+
+def load_from_torch_checkpoint(state_dict):
+    filtered_state_dict = {}
+
+    for k, v in state_dict.items():
+        if k.startswith("convnet."):
+            filtered_state_dict[k[8:]] = v
+
+    restored = convert_torch_checkpoint.load_from_torch_checkpoint(filtered_state_dict)
+    variables = flax.traverse_util.unflatten_dict(restored, sep="/")
+
+    variables["params"] = {"convnet": variables["params"]}
+    variables["batch_stats"] = {"convnet": variables["batch_stats"]}
+    return variables

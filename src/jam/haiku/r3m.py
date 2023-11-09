@@ -1,19 +1,18 @@
-from typing import Optional
-
 import haiku as hk
 import jax
 import jax.numpy as jnp
 
-from jam.models.resnet import resnet_haiku
+from jam.haiku.resnet import convert_torch_checkpoint
+from jam.haiku.resnet import resnet
 
 
 class R3M(hk.Module):
-    def __init__(self, resnet_size: int, name: Optional[str] = "r3m"):
+    def __init__(self, resnet_size: int, name: str = "r3m"):
         super().__init__(name)
         resnet_cls = {
-            18: resnet_haiku.ResNet18,
-            34: resnet_haiku.ResNet34,
-            50: resnet_haiku.ResNet50,
+            18: resnet.ResNet18,
+            34: resnet.ResNet34,
+            50: resnet.ResNet50,
         }[resnet_size]
 
         bn_config = {"decay_rate": 0.9}
@@ -35,7 +34,7 @@ class R3M(hk.Module):
             out = network.initial_batchnorm(out, is_training, test_local_stats)
             out = jax.nn.relu(out)
 
-        out = resnet_haiku.max_pool(
+        out = resnet.max_pool(
             out,
             window_shape=(1, 3, 3, 1),
             strides=(1, 2, 2, 1),
@@ -51,3 +50,15 @@ class R3M(hk.Module):
 
         out = jnp.mean(out, axis=(1, 2))
         return out
+
+
+def load_from_torch_checkpoint(state_dict):
+    filtered_state_dict = {}
+
+    for k, v in state_dict.items():
+        if k.startswith("convnet."):
+            filtered_state_dict[k[8:]] = v
+
+    return convert_torch_checkpoint.load_from_torch_checkpoint(
+        filtered_state_dict, name="r3m/~/convnet"
+    )

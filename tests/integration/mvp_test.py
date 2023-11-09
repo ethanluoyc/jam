@@ -6,8 +6,8 @@ import numpy as np
 from safetensors.flax import load_file
 import torch
 
-from jam.models.vit import import_vit
-from jam.models.vit import mvp_flax
+from jam.flax.vit import import_vit
+from jam.flax.vit import mvp_flax
 
 
 def _load_pretrained_checkpoint(model_name):

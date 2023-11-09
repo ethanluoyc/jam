@@ -92,7 +92,7 @@ def final_logits(key, val, slot):
     return newkey, val
 
 
-def restore_from_torch_checkpoint(state_dict, name):
+def load_from_torch_checkpoint(state_dict, name):
     converted_dict = resnet_importer.apply(checkpoint_utils.as_numpy(state_dict))
     converted_dict = {f"{name}/~/{k}": v for k, v in converted_dict.items()}
     for k in list(converted_dict.keys()):

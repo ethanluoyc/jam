@@ -7,7 +7,7 @@ import numpy as np
 from PIL import Image
 
 from jam import imagenet_util
-from jam.models.nfnet import nfnet_flax
+from jam.flax import nfnet
 
 
 def preprocess_image(im, imsize):
@@ -21,15 +21,15 @@ def main(_):
     variant = "F0"
     with open(f"data/checkpoints/nfnet/{variant}/model.npz", "rb") as in_file:
         params = dill.load(in_file)
-        params = nfnet_flax.convert_haiku_checkpoint(params)
+        params = nfnet.load_from_haiku_checkpoint(params)
 
     image = Image.open(os.path.join("tests", "testdata", "peppers.jpg"))
     label = "bell pepper"
 
-    imsize = nfnet_flax.nfnet_params[variant]["test_imsize"]
+    imsize = nfnet.nfnet_params[variant]["test_imsize"]
 
     # Prepare the forward fn
-    module = nfnet_flax.NFNet(num_classes=1000, variant=variant)
+    module = nfnet.NFNet(num_classes=1000, variant=variant)
 
     def forward(params, inputs, is_training):
         predictions = module.apply({"params": params}, inputs, is_training=is_training)

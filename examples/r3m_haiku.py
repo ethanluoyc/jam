@@ -7,8 +7,7 @@ from PIL import Image
 from safetensors.flax import load_file
 
 from jam import imagenet_util
-from jam.models.r3m import r3m_haiku
-from jam.models.resnet import import_resnet_haiku
+from jam.haiku import r3m
 
 
 def preprocess_image(im, imsize):
@@ -16,23 +15,6 @@ def preprocess_image(im, imsize):
     im = im.crop((16, 16, 16 + imsize, 16 + imsize))
     # Convert im to tensor and normalize with channel-wise RGB
     return (np.float32(im) - imagenet_util.IMAGENET_MEAN_RGB) / imagenet_util.IMAGENET_STDDEV_RGB  # type: ignore
-
-
-def _load_pretrained_checkpoint(model_name):
-    state_dict = load_file(f"data/checkpoints/r3m/{model_name}/torch_model.safetensors")
-    return state_dict
-
-
-def restore_from_torch_checkpoint_haiku(state_dict):
-    filtered_state_dict = {}
-
-    for k, v in state_dict.items():
-        if k.startswith("convnet."):
-            filtered_state_dict[k[8:]] = v
-
-    return import_resnet_haiku.restore_from_torch_checkpoint(
-        filtered_state_dict, name="r3m/~/convnet"
-    )
 
 
 def main(_):
@@ -43,13 +25,13 @@ def main(_):
     imsize = 224
 
     def forward(inputs, is_training=True):
-        model = r3m_haiku.R3M(resnet_size)
+        model = r3m.R3M(resnet_size)
         return model(inputs, is_training)
 
     model = hk.without_apply_rng(hk.transform_with_state(forward))
 
-    state_dict = _load_pretrained_checkpoint(model_name)
-    params, state = restore_from_torch_checkpoint_haiku(state_dict)
+    state_dict = load_file(f"data/checkpoints/r3m/{model_name}/torch_model.safetensors")
+    params, state = r3m.load_from_torch_checkpoint(state_dict)
 
     x = preprocess_image(image, imsize)
     embedding, _ = model.apply(

@@ -11,10 +11,8 @@ from safetensors.flax import load_file
 import torch
 import torchvision
 
-from jam.models.resnet import import_resnet_flax
-from jam.models.resnet import import_resnet_haiku
-from jam.models.resnet import resnet_flax
-from jam.models.resnet import resnet_haiku
+from jam.flax import resnet as resnet_flax
+from jam.haiku import resnet as resnet_haiku
 
 RESNET_SIZES = [152, 101, 50, 34, 18]
 NUM_CLASSES = 1000
@@ -57,7 +55,7 @@ class ResnetImporterTest(parameterized.TestCase):
         (
             restore_params,
             restore_state,
-        ) = import_resnet_haiku.restore_from_torch_checkpoint(state_dict, name)
+        ) = resnet_haiku.load_from_torch_checkpoint(state_dict, name)
 
         hk_output, _ = hk_model.apply(
             restore_params, restore_state, dummy_image, is_training=False
@@ -85,9 +83,7 @@ class ResnetImporterTest(parameterized.TestCase):
         )
 
         state_dict = load_file(_checkpoint_path(name))
-        restored_variables = import_resnet_flax.restore_from_torch_checkpoint(
-            state_dict
-        )
+        restored_variables = resnet_flax.load_from_torch_checkpoint(state_dict)
         self.assertTreeSameStructure(initial_variables, restored_variables)
 
         flax_output = flax_module.apply(

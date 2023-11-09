@@ -9,9 +9,7 @@ from safetensors.torch import save_file
 import torch
 import torchvision
 
-from jam.models.nfnet.checkpoints import CHECKPOINTS as NFNET_CHECKPOINTS
-from jam.models.r3m.checkpoints import CHECKPOINTS as R3M_CHECKPOINTS
-from jam.models.vit.mvp_flax import CHECKPOINTS as MVP_CHECKPOINTS
+from jam import checkpoints
 
 TORCH_SAFETENSORS_FILENAME = "torch_model.safetensors"
 TORCH_CKPT_FILENAME = "torch_model.pt"
@@ -42,7 +40,7 @@ RESNET_CKPTS = {
 
 def prepare_mvp_checkpoint(model_dir, model_name):
     model_dir = os.path.join(model_dir, model_name)
-    model_config = MVP_CHECKPOINTS[model_name]
+    model_config = checkpoints.MVP_CHECKPOINTS[model_name]
     os.makedirs(model_dir, exist_ok=True)
     model_path = os.path.join(model_dir, TORCH_CKPT_FILENAME)
     st_path = os.path.join(model_dir, TORCH_SAFETENSORS_FILENAME)
@@ -59,7 +57,7 @@ def prepare_mvp_checkpoint(model_dir, model_name):
 
 
 def prepare_nfnet_checkpoint(model_dir, model_name):
-    model_config = NFNET_CHECKPOINTS[model_name]
+    model_config = checkpoints.NFNET_CHECKPOINTS[model_name]
     model_dir = os.path.join(model_dir, model_name)
     os.makedirs(model_dir, exist_ok=True)
     model_path = os.path.join(model_dir, "model.npz")
@@ -72,7 +70,7 @@ def prepare_nfnet_checkpoint(model_dir, model_name):
 
 
 def prepare_r3m_checkpoint(model_dir, model_name):
-    model_config = R3M_CHECKPOINTS[model_name]
+    model_config = checkpoints.R3M_CHECKPOINTS[model_name]
     model_dir = os.path.join(model_dir, model_name)
     os.makedirs(model_dir, exist_ok=True)
     model_path = os.path.join(model_dir, TORCH_CKPT_FILENAME)
@@ -110,10 +108,10 @@ def prepare_resnet_checkpoint(model_dir, model_name):
 
 
 MODEL_GROUPS = {
-    "r3m": (R3M_CHECKPOINTS, prepare_r3m_checkpoint),
-    "nfnet": (NFNET_CHECKPOINTS, prepare_nfnet_checkpoint),
-    "resnet": (RESNET_CKPTS, prepare_resnet_checkpoint),
-    "mvp": (MVP_CHECKPOINTS, prepare_mvp_checkpoint),
+    "r3m": (checkpoints.R3M_CHECKPOINTS, prepare_r3m_checkpoint),
+    "nfnet": (checkpoints.NFNET_CHECKPOINTS, prepare_nfnet_checkpoint),
+    "resnet": (checkpoints.RESNET_CKPTS, prepare_resnet_checkpoint),
+    "mvp": (checkpoints.MVP_CHECKPOINTS, prepare_mvp_checkpoint),
 }
 
 _MODEL = flags.DEFINE_multi_string(
