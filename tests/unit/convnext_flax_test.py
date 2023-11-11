@@ -1,5 +1,6 @@
 from absl.testing import absltest
 import chex
+import flax
 import jax
 import jax.numpy as jnp
 import numpy as np

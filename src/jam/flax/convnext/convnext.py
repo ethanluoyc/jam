@@ -18,7 +18,7 @@ class CNBlockConfig:
     num_blocks: int
 
 
-class CNBlock(nn.Module):
+class ConvNeXtBlock(nn.Module):
     dim: int
     layer_scale: float
     stochastic_depth_prob: float
@@ -37,11 +37,22 @@ class CNBlock(nn.Module):
                     feature_group_count=self.dim,
                     use_bias=True,
                     kernel_init=_default_kernel_init,
+                    name="conv",
                 ),
-                self.norm_cls(),
-                nn.Dense(4 * self.dim, use_bias=True, kernel_init=_default_kernel_init),
+                self.norm_cls(name="norm"),
+                nn.Dense(
+                    4 * self.dim,
+                    use_bias=True,
+                    kernel_init=_default_kernel_init,
+                    name="dense_0",
+                ),
                 self.activation,
-                nn.Dense(self.dim, use_bias=True, kernel_init=_default_kernel_init),
+                nn.Dense(
+                    self.dim,
+                    use_bias=True,
+                    kernel_init=_default_kernel_init,
+                    name="dense_1",
+                ),
             ]
         )
         self.layer_scale_param = self.param(
@@ -67,7 +78,7 @@ class ConvNextStage(nn.Module):
     layer_scale: float
     stochastic_depth_probs: Sequence[Union[float, np.ndarray]]
     stride: int = 1
-    block_cls: Any = CNBlock
+    block_cls: Any = ConvNeXtBlock
     norm_cls: Any = functools.partial(nn.LayerNorm, epsilon=1e-6)
 
     @nn.compact
@@ -76,13 +87,14 @@ class ConvNextStage(nn.Module):
         if inputs.shape[-1] != self.channels or self.stride != 1:
             downsample = nn.Sequential(
                 [
-                    self.norm_cls(),
+                    self.norm_cls(name="downsample_norm"),
                     nn.Conv(
                         features=self.channels,
                         kernel_size=(2, 2),
                         strides=self.stride,
                         kernel_init=_default_kernel_init,
                         use_bias=True,
+                        name="downsample_conv",
                     ),
                 ]
             )
@@ -92,7 +104,10 @@ class ConvNextStage(nn.Module):
         for i in range(self.num_blocks):
             blocks.append(
                 self.block_cls(
-                    self.channels, self.layer_scale, self.stochastic_depth_probs[i]
+                    self.channels,
+                    self.layer_scale,
+                    self.stochastic_depth_probs[i],
+                    name=f"block_{i}",
                 )
             )
         for block in blocks:
@@ -113,11 +128,11 @@ def _compute_per_block_stochastic_depth_probs(
 
 class ConvNeXt(nn.Module):
     block_settings: List[CNBlockConfig]
-    block_cls: Any = CNBlock
+    block_cls: Any = ConvNeXtBlock
     stochastic_depth_prob: float = 0.0
     layer_scale: float = 1e-6
     num_classes: int = 1000
-    block_cls: Any = CNBlock
+    block_cls: Any = ConvNeXtBlock
     norm_cls: Any = functools.partial(
         nn.LayerNorm, epsilon=1e-6, use_fast_variance=True
     )
@@ -135,8 +150,9 @@ class ConvNeXt(nn.Module):
                     padding=0,
                     use_bias=True,
                     kernel_init=_default_kernel_init,
+                    name="initial_conv",
                 ),
-                self.norm_cls(),
+                self.norm_cls(name="initial_norm"),
             ]
         )
         self.stem = stem
@@ -156,17 +172,14 @@ class ConvNeXt(nn.Module):
                     stochastic_depth_probs=sd_probs[i],  # type: ignore
                     block_cls=self.block_cls,
                     norm_cls=self.norm_cls,
+                    name=f"stage_{i}",
                 )
             )
 
         self.stages = stages
-        self.classifier = nn.Sequential(
-            [
-                self.norm_cls(),
-                lambda x: jnp.reshape(x, (x.shape[0], -1)),
-                nn.Dense(self.num_classes, kernel_init=_default_kernel_init),
-            ],
-            name="classifier",
+        self.norm = self.norm_cls(name="norm")
+        self.head = nn.Dense(
+            self.num_classes, kernel_init=_default_kernel_init, name="head"
         )
 
     @nn.compact
@@ -174,12 +187,13 @@ class ConvNeXt(nn.Module):
         x = self.stem(inputs)
         for stage in self.stages:
             x = stage(x, is_training)
-        x = jnp.mean(x, axis=(1, 2), keepdims=True)
-        x = self.classifier(x)
+        x = jnp.mean(x, axis=(1, 2))
+        x = self.norm(x)
+        x = self.head(x)
         return x
 
 
-def convnext_tiny():
+def convnext_tiny(**kwargs):
     block_setting = [
         CNBlockConfig(96, 3),
         CNBlockConfig(192, 3),
@@ -187,10 +201,10 @@ def convnext_tiny():
         CNBlockConfig(768, 3),
     ]
     stocharstic_depth_prob = 0.1
-    return ConvNeXt(block_setting, stochastic_depth_prob=stocharstic_depth_prob)
+    return ConvNeXt(block_setting, stochastic_depth_prob=stocharstic_depth_prob, **kwargs)
 
 
-def convnext_small():
+def convnext_small(**kwargs):
     block_setting = [
         CNBlockConfig(96, 3),
         CNBlockConfig(192, 3),
@@ -198,10 +212,10 @@ def convnext_small():
         CNBlockConfig(768, 3),
     ]
     stocharstic_depth_prob = 0.4
-    return ConvNeXt(block_setting, stochastic_depth_prob=stocharstic_depth_prob)
+    return ConvNeXt(block_setting, stochastic_depth_prob=stocharstic_depth_prob, **kwargs)
 
 
-def convnext_base():
+def convnext_base(**kwargs):
     block_setting = [
         CNBlockConfig(128, 3),
         CNBlockConfig(256, 3),
@@ -209,10 +223,10 @@ def convnext_base():
         CNBlockConfig(1024, 3),
     ]
     stocharstic_depth_prob = 0.5
-    return ConvNeXt(block_setting, stochastic_depth_prob=stocharstic_depth_prob)
+    return ConvNeXt(block_setting, stochastic_depth_prob=stocharstic_depth_prob, **kwargs)
 
 
-def convnext_large():
+def convnext_large(**kwargs):
     block_setting = [
         CNBlockConfig(192, 3),
         CNBlockConfig(384, 3),
@@ -220,4 +234,5 @@ def convnext_large():
         CNBlockConfig(1536, 3),
     ]
     stocharstic_depth_prob = 0.5
-    return ConvNeXt(block_setting, stochastic_depth_prob=stocharstic_depth_prob)
+    return ConvNeXt(block_setting, stochastic_depth_prob=stocharstic_depth_prob, **kwargs)
+

@@ -53,6 +53,10 @@ dev = [
     "dill>=0.3.7",
     "Pillow>=10.1.0",
     "ipykernel>=6.26.0",
+    "clu>=0.0.10",
+    "ml-collections>=0.1.1",
+    "tensorflow-cpu>=2.13.1",
+    "tensorflow-datasets>=4.9.3",
 ]
 [tool.black]
 line-length = 88
