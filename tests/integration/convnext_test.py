@@ -23,30 +23,12 @@ class ConvNextTest(parameterized.TestCase):
         initial_variables = module.init(
             jax.random.PRNGKey(0), jnp.ones((1, 224, 224, 3)), is_training=False
         )
-        flax_keys = flax.traverse_util.flatten_dict(
-            initial_variables["params"], sep="/"
-        ).keys()
-        params_flat = flax.traverse_util.flatten_dict(
-            initial_variables["params"], sep="/"
-        )
 
         restored_params = convnext.load_from_torch_checkpoint(torch_model.state_dict())[
             "params"
         ]
-        restored_flat = flax.traverse_util.flatten_dict(restored_params, sep="/")
 
-        print("In converted but not in flax")
-        for k in sorted(set(restored_flat.keys()) - set(flax_keys)):
-            print(k)
-        print("In flax but not in converted")
-        for k in sorted(set(flax_keys) - set(restored_flat.keys())):
-            print(k)
-
-        print("Different shapes")
-        for k in sorted(set(flax_keys).intersection(set(restored_flat.keys()))):
-            if params_flat[k].shape != restored_flat[k].shape:
-                print(k, params_flat[k].shape, restored_flat[k].shape)
-
+        self.assertTreeSameStructure(initial_variables["params"], restored_params)
         np.random.seed(0)
         dummy_image = np.random.normal(0, 1, size=(1, 224, 224, 3)).astype(np.float32)
         flax_output = module.apply(
@@ -59,7 +41,25 @@ class ConvNextTest(parameterized.TestCase):
             .detach()
             .numpy()
         )
-        np.testing.assert_allclose(flax_output, torch_output, atol=0.015)
+        np.testing.assert_allclose(flax_output, torch_output, atol=1e-5)
+
+    def assertTreeSameStructure(self, tree1, tree2):
+        tree1_flat = flax.traverse_util.flatten_dict(tree1, sep="/")
+        tree2_flat = flax.traverse_util.flatten_dict(tree2, sep="/")
+        for k in sorted(tree2_flat.keys()):
+            if k not in tree1_flat:
+                raise ValueError("Expect to find {} in initial_variables".format(k))
+
+        for k in sorted(tree1_flat.keys()):
+            if k not in tree2_flat:
+                raise ValueError("Expect to find {} in restored variables".format(k))
+
+        shared_keys = set(tree1_flat.keys()) & set(tree2_flat.keys())
+        for k in sorted(shared_keys):
+            tree1_shape = tree1_flat[k].shape
+            tree2_shape = tree2_flat[k].shape
+            if tree1_shape != tree2_shape:
+                raise ValueError("Shape mismatch: {} vs {}".format(k, k))
 
 
 if __name__ == "__main__":
