@@ -7,27 +7,9 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
+from jam.flax import common
+
 _default_kernel_init = nn.initializers.truncated_normal(stddev=0.02)
-
-
-class StochDepth(nn.Module):
-    """Batchwise Dropout used in EfficientNet, optionally sans rescaling."""
-
-    drop_rate: float
-    scale_by_keep: bool = False
-    rng_collection: str = "dropout"
-
-    def __call__(self, x, is_training) -> jnp.ndarray:
-        if not is_training:
-            return x
-        batch_size = x.shape[0]
-        rng = self.make_rng(self.rng_collection)
-        r = jax.random.uniform(rng, [batch_size, 1, 1, 1], dtype=x.dtype)
-        keep_prob = 1.0 - self.drop_rate
-        binary_tensor = jnp.floor(keep_prob + r)
-        if self.scale_by_keep:
-            x = x / keep_prob
-        return x * binary_tensor
 
 
 @dataclasses.dataclass
@@ -42,7 +24,7 @@ class CNBlock(nn.Module):
     stochastic_depth_prob: float
     norm_cls: Any = functools.partial(nn.LayerNorm, epsilon=1e-6)
     activation: Callable[[jnp.ndarray], jnp.ndarray] = lambda x: jax.nn.gelu(
-        x, approximate=True
+        x, approximate=False
     )
 
     def setup(self) -> None:
@@ -68,11 +50,13 @@ class CNBlock(nn.Module):
             (self.dim,),
             jnp.float32,
         )
-        self.stoch_depth = StochDepth(self.stochastic_depth_prob, scale_by_keep=True)
+        self.stochastic_depth = common.StochasticDepth(
+            self.stochastic_depth_prob, scale_by_keep=True
+        )
 
-    def __call__(self, inputs: jnp.ndarray, is_training) -> jnp.ndarray:
+    def __call__(self, inputs: jnp.ndarray, is_training: bool) -> jnp.ndarray:
         result = self.layer_scale_param * self.block(inputs)
-        result = self.stoch_depth(result, is_training)
+        result = self.stochastic_depth(result, deterministic=not is_training)
         result = inputs + result
         return result
 
@@ -117,6 +101,16 @@ class ConvNextStage(nn.Module):
         return x
 
 
+def _compute_per_block_stochastic_depth_probs(
+    stochastic_depth_prob: float, num_blocks: List[int]
+) -> List[List[float]]:
+    """Computes the per-block stochastic depth probabilities."""
+    total_stage_blocks = sum(num_blocks)
+    probs = np.linspace(0, stochastic_depth_prob, total_stage_blocks)
+    drop_rates = np.split(probs, np.cumsum([b for b in num_blocks]))
+    return list(map(lambda x: x.tolist(), drop_rates))[:-1]
+
+
 class ConvNeXt(nn.Module):
     block_settings: List[CNBlockConfig]
     block_cls: Any = CNBlock
@@ -125,7 +119,7 @@ class ConvNeXt(nn.Module):
     num_classes: int = 1000
     block_cls: Any = CNBlock
     norm_cls: Any = functools.partial(
-        nn.LayerNorm, epsilon=1e-6, use_fast_variance=False
+        nn.LayerNorm, epsilon=1e-6, use_fast_variance=True
     )
 
     def setup(self) -> None:
@@ -147,13 +141,8 @@ class ConvNeXt(nn.Module):
         )
         self.stem = stem
 
-        total_stage_blocks = sum(cnf.num_blocks for cnf in block_setting)
-        sd_probs = [
-            self.stochastic_depth_prob * stage_block_id / (total_stage_blocks - 1.0)
-            for stage_block_id in range(total_stage_blocks)
-        ]
-        sd_probs = np.split(
-            sd_probs, np.cumsum([cnf.num_blocks for cnf in block_setting])  # type: ignore
+        sd_probs = _compute_per_block_stochastic_depth_probs(
+            self.stochastic_depth_prob, [b.num_blocks for b in block_setting]
         )
 
         stages = []

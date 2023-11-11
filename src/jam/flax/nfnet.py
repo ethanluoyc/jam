@@ -11,6 +11,8 @@ from jax import lax
 import jax.numpy as jnp
 import numpy as np
 
+from jam.flax import common
+
 PRNGKey = jax.Array
 Shape = Tuple[int, ...]
 Dtype = Any
@@ -338,26 +340,6 @@ class SqueezeExcite(nn.Module):
         return h
 
 
-class StochDepth(nn.Module):
-    """Batchwise Dropout used in EfficientNet, optionally sans rescaling."""
-
-    drop_rate: float
-    scale_by_keep: bool = False
-    rng_collection: str = "dropout"
-
-    def __call__(self, x, is_training) -> jnp.ndarray:
-        if not is_training:
-            return x
-        batch_size = x.shape[0]
-        rng = self.make_rng(self.rng_collection)
-        r = jax.random.uniform(rng, [batch_size, 1, 1, 1], dtype=x.dtype)
-        keep_prob = 1.0 - self.drop_rate
-        binary_tensor = jnp.floor(keep_prob + r)
-        if self.scale_by_keep:
-            x = x / keep_prob
-        return x * binary_tensor
-
-
 class NFNet(nn.Module):
     """Normalizer-Free Networks with an improved architecture.
 
@@ -545,11 +527,6 @@ class NFBlock(nn.Module):
         width = self.group_size * groups
 
         use_projection = self.stride > 1 or self.in_ch != self.out_ch
-        use_stochdepth = (
-            self.stochdepth_rate is not None
-            and self.stochdepth_rate > 0.0
-            and self.stochdepth_rate < 1.0
-        )
 
         conv0 = self.which_conv(width, kernel_size=(1, 1), padding="SAME", name="conv0")
         # Grouped NxN conv
@@ -585,10 +562,6 @@ class NFBlock(nn.Module):
             self.out_ch, self.out_ch, self.se_ratio, name="squeeze_excite"
         )
 
-        # Are we using stochastic depth?
-        if use_stochdepth:
-            stoch_depth = StochDepth(self.stochdepth_rate)  # type: ignore
-
         out = self.activation(x) * self.beta
         if self.stride > 1:  # Average-pool downsample.
             shortcut = nn.avg_pool(
@@ -609,8 +582,16 @@ class NFBlock(nn.Module):
         # Get average residual standard deviation for reporting metrics.
         res_avg_var = jnp.mean(jnp.var(out, axis=[0, 1, 2]))
         # Apply stochdepth if applicable.
-        if use_stochdepth:
-            out = stoch_depth(out, is_training)  # type: ignore
+        if (
+            self.stochdepth_rate is not None
+            and self.stochdepth_rate > 0.0
+            and self.stochdepth_rate < 1.0
+        ):
+            stoch_depth = common.StochasticDepth(
+                self.stochdepth_rate,
+                scale_by_keep=False,  # haiku implementation does not scale
+            )
+            out = stoch_depth(out, deterministic=not is_training)  # type: ignore
         # SkipInit Gain
         out = out * self.param("skip_gain", nn.initializers.zeros_init(), (), out.dtype)
         return out * self.alpha + shortcut, res_avg_var

@@ -29,7 +29,6 @@ class ConvNextTest(parameterized.TestCase):
         ]
 
         self.assertTreeSameStructure(initial_variables["params"], restored_params)
-        np.random.seed(0)
         dummy_image = np.random.normal(0, 1, size=(1, 224, 224, 3)).astype(np.float32)
         flax_output = module.apply(
             {"params": restored_params},

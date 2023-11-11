@@ -22,18 +22,6 @@ class FlaxNFNetTest(absltest.TestCase):
         outputs = se.apply(variables, inputs)
         chex.assert_shape(outputs, (4, 1, 1, 3))
 
-    def test_stochastic_depth(self):
-        sd = nfnet.StochDepth(5, 3)
-        inputs = jnp.ones((4, 32, 32, 5))
-        outputs = sd.apply(
-            {}, inputs, is_training=True, rngs={"dropout": jax.random.PRNGKey(0)}
-        )
-        chex.assert_equal_shape([inputs, outputs])
-
-        # Evaluation does not require rng.
-        outputs = sd.apply({}, inputs, is_training=False)
-        chex.assert_equal_shape([inputs, outputs])
-
     def test_nf_block(self):
         block = nfnet.NFBlock(
             in_ch=3,
