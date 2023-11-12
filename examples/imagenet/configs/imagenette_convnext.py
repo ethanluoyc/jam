@@ -14,6 +14,7 @@ def get_config():
     config.batch_size = 128
     config.shuffle_buffer_size = 16 * 128
     config.prefetch = 10
+    config.half_precision = False
 
     config.num_epochs = 100.0
     config.log_every_steps = 100

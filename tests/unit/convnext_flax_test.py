@@ -28,6 +28,11 @@ class FlaxConvNeXTTest(absltest.TestCase):
         )
         self.assertEqual(sd_rate[-1][-1], 0.1)
 
+    def test_dtype(self):
+        net = convnext.convnext_tiny(dtype=jnp.float16)
+        inputs = jnp.ones((1, 224, 224, 3), dtype=jnp.float32)
+        variables = net.init(jax.random.PRNGKey(0), inputs, False)
+
 
 if __name__ == "__main__":
     absltest.main()

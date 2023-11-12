@@ -149,7 +149,9 @@ def normalize_image(image):
     return image
 
 
-def preprocess_for_train(image_bytes, dtype=tf.float32, image_size=IMAGE_SIZE, use_autoaugment=False):
+def preprocess_for_train(
+    image_bytes, dtype=tf.float32, image_size=IMAGE_SIZE, use_autoaugment=False
+):
     """Preprocesses the given image for training.
 
     Args:
@@ -165,6 +167,7 @@ def preprocess_for_train(image_bytes, dtype=tf.float32, image_size=IMAGE_SIZE, u
     image = tf.image.random_flip_left_right(image)
     if use_autoaugment:
         import augment
+
         augmentation = augment.AutoAugment()
         image = augmentation.distort(image)
     image = normalize_image(image)
@@ -228,7 +231,9 @@ def create_split(
 
     def decode_example(example):
         if train:
-            image = preprocess_for_train(example["image"], dtype, image_size, use_autoaugment)
+            image = preprocess_for_train(
+                example["image"], dtype, image_size, use_autoaugment
+            )
         else:
             image = preprocess_for_eval(example["image"], dtype, image_size)
         return {"image": image, "label": example["label"]}

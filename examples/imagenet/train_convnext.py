@@ -22,6 +22,7 @@ The data is loaded using tensorflow_datasets.
 
 import functools
 import time
+from typing import Optional
 
 from absl import app
 from absl import flags
@@ -33,6 +34,7 @@ import flax
 from flax import jax_utils
 from flax.training import checkpoints
 from flax.training import common_utils
+from flax.training import dynamic_scale as dynamic_scale_lib
 from flax.training import train_state
 import input_pipeline
 import jax
@@ -58,8 +60,6 @@ config_flags.DEFINE_config_file(
 )
 
 
-
-
 def initialized(key, image_size, model):
     input_shape = (1, image_size, image_size, 3)
 
@@ -67,13 +67,15 @@ def initialized(key, image_size, model):
     def init(*args):
         return model.init(*args, is_training=False)
 
-    variables = init({"params": key}, jnp.ones(input_shape, jnp.float32))
+    variables = init({"params": key}, jnp.ones(input_shape, model.dtype))
     return variables["params"]
 
 
 def cross_entropy_loss(logits, labels):
     num_classes = logits.shape[-1]
-    onehot_labels = common_utils.onehot(labels, num_classes=num_classes) # TODO: fix this
+    onehot_labels = common_utils.onehot(
+        labels, num_classes=num_classes
+    )  # TODO: fix this
     smoothed_labels = optax.smooth_labels(onehot_labels, 0.1)
     xentropy = optax.softmax_cross_entropy(logits=logits, labels=smoothed_labels)
     return jnp.mean(xentropy)
@@ -127,17 +129,39 @@ def train_step(state, batch, learning_rate_fn):
         return loss, (logits,)
 
     step = state.step
+    dynamic_scale = state.dynamic_scale
     lr = learning_rate_fn(step)
+    if dynamic_scale:
+        grad_fn = dynamic_scale.value_and_grad(loss_fn, has_aux=True, axis_name="batch")
+        dynamic_scale, is_fin, aux, grads = grad_fn(state.params)
+        # dynamic loss takes care of averaging gradients across replicas
+    else:
+        grad_fn = jax.value_and_grad(loss_fn, has_aux=True)
+        aux, grads = grad_fn(state.params)
+        # Re-use same axis_name as in the call to `pmap(...train_step...)` below.
+        grads = lax.pmean(grads, axis_name="batch")
 
-    grad_fn = jax.value_and_grad(loss_fn, has_aux=True)
-    aux, grads = grad_fn(state.params)
-    # Re-use same axis_name as in the call to `pmap(...train_step...)` below.
-    grads = lax.pmean(grads, axis_name="batch")
     (logits,) = aux[1]
     metrics = compute_metrics(logits, batch["label"])
     metrics["learning_rate"] = lr
 
     new_state = state.apply_gradients(grads=grads)
+    if dynamic_scale:
+        # if is_fin == False the gradients contain Inf/NaNs and optimizer state and
+        # params should be restored (= skip this step).
+        new_state = new_state.replace(
+            opt_state=jax.tree_util.tree_map(
+                functools.partial(jnp.where, is_fin),
+                new_state.opt_state,
+                state.opt_state,
+            ),
+            params=jax.tree_util.tree_map(
+                functools.partial(jnp.where, is_fin), new_state.params, state.params
+            ),
+            dynamic_scale=dynamic_scale,
+        )
+        metrics["scale"] = dynamic_scale.scale
+
     return new_state, metrics
 
 
@@ -195,7 +219,7 @@ def create_input_iter(
 
 
 class TrainState(train_state.TrainState):
-    pass
+    dynamic_scale: Optional[dynamic_scale_lib.DynamicScale] = None
 
 
 def restore_checkpoint(state, workdir):
@@ -219,14 +243,29 @@ def create_train_state(
 ):
     """Create initial training state."""
     params = initialized(rng, image_size, model)
+
     def decay_mask_fn(params):
         flat_params = flax.traverse_util.flatten_dict(params)
         # True for params that we want to apply weight decay to
-        flat_mask = {path: (path[-1] != "bias" and "norm" not in path[-2]) for path in flat_params}
+        flat_mask = {
+            path: (path[-1] != "bias" and "norm" not in path[-2])
+            for path in flat_params
+        }
         return flax.traverse_util.unflatten_dict(flat_mask)
 
-    tx = optax.adamw(learning_rate=learning_rate_fn, weight_decay=config.weight_decay, mask=decay_mask_fn)
-    state = TrainState.create(apply_fn=model.apply, params=params, tx=tx)
+    tx = optax.adamw(
+        learning_rate=learning_rate_fn,
+        weight_decay=config.weight_decay,
+        mask=decay_mask_fn,
+    )
+    if config.half_precision:
+        dynamic_scale = dynamic_scale_lib.DynamicScale()
+    else:
+        dynamic_scale = None
+
+    state = TrainState.create(
+        apply_fn=model.apply, params=params, tx=tx, dynamic_scale=dynamic_scale
+    )
     return state
 
 
@@ -252,7 +291,10 @@ def train_and_evaluate(config: ml_collections.ConfigDict, workdir: str) -> Train
     if config.batch_size % jax.device_count() > 0:
         raise ValueError("Batch size must be divisible by the number of devices")
     local_batch_size = config.batch_size // jax.process_count()
-    input_dtype = tf.float32
+    if config.half_precision:
+        input_dtype = tf.float16
+    else:
+        input_dtype = tf.float32
 
     dataset_builder = tfds.builder(config.dataset)
     train_iter = create_input_iter(
@@ -298,7 +340,8 @@ def train_and_evaluate(config: ml_collections.ConfigDict, workdir: str) -> Train
     base_learning_rate = config.learning_rate
 
     model = getattr(convnext, config.model)(
-        num_classes=dataset_builder.info.features["label"].num_classes
+        num_classes=dataset_builder.info.features["label"].num_classes,
+        dtype=jnp.float16 if config.half_precision else jnp.float32,
     )
 
     learning_rate_fn = create_learning_rate_fn(

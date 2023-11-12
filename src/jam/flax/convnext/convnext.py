@@ -26,6 +26,7 @@ class ConvNeXtBlock(nn.Module):
     activation: Callable[[jnp.ndarray], jnp.ndarray] = lambda x: jax.nn.gelu(
         x, approximate=False
     )
+    dtype: Any = jnp.float32
 
     def setup(self) -> None:
         self.block = nn.Sequential(
@@ -38,6 +39,7 @@ class ConvNeXtBlock(nn.Module):
                     use_bias=True,
                     kernel_init=_default_kernel_init,
                     name="conv",
+                    dtype=self.dtype,
                 ),
                 self.norm_cls(name="norm"),
                 nn.Dense(
@@ -45,6 +47,7 @@ class ConvNeXtBlock(nn.Module):
                     use_bias=True,
                     kernel_init=_default_kernel_init,
                     name="dense_0",
+                    dtype=self.dtype,
                 ),
                 self.activation,
                 nn.Dense(
@@ -52,6 +55,7 @@ class ConvNeXtBlock(nn.Module):
                     use_bias=True,
                     kernel_init=_default_kernel_init,
                     name="dense_1",
+                    dtype=self.dtype,
                 ),
             ]
         )
@@ -59,7 +63,7 @@ class ConvNeXtBlock(nn.Module):
             "layer_scale",
             lambda key, shape, dtype: jnp.full(shape, self.layer_scale, dtype),
             (self.dim,),
-            jnp.float32,
+            self.dtype,
         )
         self.stochastic_depth = common.StochasticDepth(
             self.stochastic_depth_prob, scale_by_keep=True
@@ -80,6 +84,7 @@ class ConvNextStage(nn.Module):
     stride: int = 1
     block_cls: Any = ConvNeXtBlock
     norm_cls: Any = functools.partial(nn.LayerNorm, epsilon=1e-6)
+    dtype = jnp.float32
 
     @nn.compact
     def __call__(self, inputs, is_training) -> Any:
@@ -95,6 +100,7 @@ class ConvNextStage(nn.Module):
                         kernel_init=_default_kernel_init,
                         use_bias=True,
                         name="downsample_conv",
+                        dtype=self.dtype,
                     ),
                 ]
             )
@@ -136,14 +142,18 @@ class ConvNeXt(nn.Module):
     norm_cls: Any = functools.partial(
         nn.LayerNorm, epsilon=1e-6, use_fast_variance=True
     )
+    dtype: Any = jnp.float32
 
     def setup(self) -> None:
         block_setting = self.block_settings
+        conv = functools.partial(nn.Conv, dtype=self.dtype)
+        norm_cls = functools.partial(self.norm_cls, dtype=self.dtype)
+        block_cls = functools.partial(self.block_cls, dtype=self.dtype)
 
         firstconv_output_channels = block_setting[0].channels
         stem = nn.Sequential(
             [
-                nn.Conv(
+                conv(
                     firstconv_output_channels,
                     kernel_size=(4, 4),
                     strides=4,
@@ -152,7 +162,7 @@ class ConvNeXt(nn.Module):
                     kernel_init=_default_kernel_init,
                     name="initial_conv",
                 ),
-                self.norm_cls(name="initial_norm"),
+                norm_cls(name="initial_norm"),
             ]
         )
         self.stem = stem
@@ -170,16 +180,19 @@ class ConvNeXt(nn.Module):
                     self.layer_scale,
                     stride=2 if i > 0 else 1,
                     stochastic_depth_probs=sd_probs[i],  # type: ignore
-                    block_cls=self.block_cls,
-                    norm_cls=self.norm_cls,
+                    block_cls=block_cls,
+                    norm_cls=norm_cls,
                     name=f"stage_{i}",
                 )
             )
 
         self.stages = stages
-        self.norm = self.norm_cls(name="norm")
+        self.norm = norm_cls(name="norm")
         self.head = nn.Dense(
-            self.num_classes, kernel_init=_default_kernel_init, name="head"
+            self.num_classes,
+            kernel_init=_default_kernel_init,
+            name="head",
+            dtype=self.dtype,
         )
 
     @nn.compact
