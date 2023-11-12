@@ -201,7 +201,9 @@ def convnext_tiny(**kwargs):
         CNBlockConfig(768, 3),
     ]
     stocharstic_depth_prob = 0.1
-    return ConvNeXt(block_setting, stochastic_depth_prob=stocharstic_depth_prob, **kwargs)
+    return ConvNeXt(
+        block_setting, stochastic_depth_prob=stocharstic_depth_prob, **kwargs
+    )
 
 
 def convnext_small(**kwargs):
@@ -212,7 +214,9 @@ def convnext_small(**kwargs):
         CNBlockConfig(768, 3),
     ]
     stocharstic_depth_prob = 0.4
-    return ConvNeXt(block_setting, stochastic_depth_prob=stocharstic_depth_prob, **kwargs)
+    return ConvNeXt(
+        block_setting, stochastic_depth_prob=stocharstic_depth_prob, **kwargs
+    )
 
 
 def convnext_base(**kwargs):
@@ -223,7 +227,9 @@ def convnext_base(**kwargs):
         CNBlockConfig(1024, 3),
     ]
     stocharstic_depth_prob = 0.5
-    return ConvNeXt(block_setting, stochastic_depth_prob=stocharstic_depth_prob, **kwargs)
+    return ConvNeXt(
+        block_setting, stochastic_depth_prob=stocharstic_depth_prob, **kwargs
+    )
 
 
 def convnext_large(**kwargs):
@@ -234,5 +240,6 @@ def convnext_large(**kwargs):
         CNBlockConfig(1536, 3),
     ]
     stocharstic_depth_prob = 0.5
-    return ConvNeXt(block_setting, stochastic_depth_prob=stocharstic_depth_prob, **kwargs)
-
+    return ConvNeXt(
+        block_setting, stochastic_depth_prob=stocharstic_depth_prob, **kwargs
+    )
