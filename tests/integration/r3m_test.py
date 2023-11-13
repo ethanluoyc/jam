@@ -3,18 +3,12 @@ from absl.testing import parameterized
 import haiku as hk
 import numpy as np
 from r3m import load_r3m
-from safetensors.flax import load_file
 import torch
+import utils  # type: ignore
 
 from jam import imagenet_util
 from jam.flax import r3m as r3m_flax
 from jam.haiku import r3m as r3m_haiku
-
-
-def _load_pretrained_checkpoint(model_name):
-    state_dict = load_file(f"data/checkpoints/r3m/{model_name}/torch_model.safetensors")
-    return state_dict
-
 
 R3M_RESNET_MODELS = ["r3m-18", "r3m-34", "r3m-50"]
 
@@ -37,7 +31,7 @@ class R3MCheckpointTest(parameterized.TestCase):
 
         resnet_hk = hk.without_apply_rng(hk.transform_with_state(forward))
 
-        state_dict = _load_pretrained_checkpoint(model_name)
+        state_dict = utils.load_torch_pretrained_weights("r3m", model_name)
         restore_params, restore_state = r3m_haiku.load_from_torch_checkpoint(state_dict)
 
         # N, H, W, C
@@ -65,7 +59,7 @@ class R3MCheckpointTest(parameterized.TestCase):
             np.float32
         )
 
-        state_dict = _load_pretrained_checkpoint(model_name)
+        state_dict = utils.load_pretrained_weights("r3m", model_name)
         restored_variables = r3m_flax.load_from_torch_checkpoint(state_dict)
 
         embedding = self._predict_torch(r3m, image)

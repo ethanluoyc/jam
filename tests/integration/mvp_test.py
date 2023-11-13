@@ -3,16 +3,11 @@ from absl.testing import parameterized
 import jax
 import mvp
 import numpy as np
-from safetensors.flax import load_file
 import torch
+import utils  # type: ignore
 
 from jam.flax.vit import import_vit
 from jam.flax.vit import mvp_flax
-
-
-def _load_pretrained_checkpoint(model_name):
-    state_dict = load_file(f"data/checkpoints/mvp/{model_name}/torch_model.safetensors")
-    return state_dict
 
 
 class MVPCheckpointTest(parameterized.TestCase):
@@ -28,7 +23,7 @@ class MVPCheckpointTest(parameterized.TestCase):
 
         model = mvp_flax.load(model_name)
 
-        state_dict = _load_pretrained_checkpoint(model_name)
+        state_dict = utils.load_torch_pretrained_weights("mvp", model_name)
         restored_params = import_vit.restore_from_torch_checkpoint(state_dict)
         restored_params = jax.device_put(restored_params)
 

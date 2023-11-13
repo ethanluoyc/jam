@@ -1,5 +1,4 @@
 # type: ignore
-import os
 
 from absl.testing import absltest
 from absl.testing import parameterized
@@ -7,21 +6,15 @@ import flax
 import haiku as hk
 import jax
 import numpy as np
-from safetensors.flax import load_file
 import torch
 import torchvision
+import utils
 
 from jam.flax import resnet as resnet_flax
 from jam.haiku import resnet as resnet_haiku
 
 RESNET_SIZES = [152, 101, 50, 34, 18]
 NUM_CLASSES = 1000
-
-CKPT_DIR = "data/checkpoints/resnet"
-
-
-def _checkpoint_path(name):
-    return os.path.join(CKPT_DIR, f"{name}/torch_model.safetensors")
 
 
 class ResnetImporterTest(parameterized.TestCase):
@@ -51,7 +44,7 @@ class ResnetImporterTest(parameterized.TestCase):
         hk_model = hk.without_apply_rng(hk.transform_with_state(model_fn))
         # N, H, W, C
         dummy_image = np.random.normal(0, 1, size=(1, 224, 224, 3)).astype(np.float32)
-        state_dict = load_file(_checkpoint_path(name))
+        state_dict = utils.load_pretrained_weights("resnet", name)
         (
             restore_params,
             restore_state,
@@ -82,7 +75,7 @@ class ResnetImporterTest(parameterized.TestCase):
             jax.random.PRNGKey(0), dummy_image, use_running_average=True
         )
 
-        state_dict = load_file(_checkpoint_path(name))
+        state_dict = utils.load_torch_pretrained_weights("resnet", name)
         restored_variables = resnet_flax.load_from_torch_checkpoint(state_dict)
         self.assertTreeSameStructure(initial_variables, restored_variables)
 

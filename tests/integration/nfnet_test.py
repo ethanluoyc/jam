@@ -22,6 +22,7 @@ import dill
 import haiku as hk
 import numpy as np
 from PIL import Image
+import utils  # type: ignore
 
 from jam import imagenet_util
 from jam.flax import nfnet as nfnet_flax
@@ -33,7 +34,8 @@ NFNET_TEST_VARIANTS = ["F0"]
 
 
 def _load_pretrained_checkpoint(variant):
-    with open(f"data/checkpoints/nfnet/{variant}/model.npz", "rb") as in_file:
+    model_dir = utils.get_model_dir("nfnet", variant)
+    with open(os.path.join(model_dir, "model.npz"), "rb") as in_file:
         params = dill.load(in_file)
     return params
 
