@@ -1,7 +1,4 @@
-from transformers import FlaxViTModel
 from transformers import ViTConfig
-
-from jam.checkpoints import MVP_CHECKPOINTS
 
 
 def vit_b16(*, image_size):
@@ -49,18 +46,8 @@ def vit_l16(*, image_size):
     return config
 
 
-_CONFIG_FUNCS = {
+CONFIGS = {
     "vits": vit_s16,
     "vitb": vit_b16,
     "vitl": vit_l16,
 }
-
-
-def load(name):
-    assert name in MVP_CHECKPOINTS.keys(), "Model {} not available".format(name)
-    # pretrained = cache_url(name, _MODELS[name])
-    config_func = _CONFIG_FUNCS[name.split("-")[0]]
-    img_size = 256 if "-256-" in name else 224
-    # model, _ = model_func(img_size=img_size)
-    model = FlaxViTModel(config_func(image_size=img_size), add_pooling_layer=False)
-    return model

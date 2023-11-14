@@ -4,10 +4,18 @@ import jax
 import mvp
 import numpy as np
 import torch
+from transformers import FlaxViTModel
 import utils  # type: ignore
 
 from jam.flax.vit import import_vit
 from jam.flax.vit import mvp_flax
+
+
+def _load(name):
+    config_func = mvp_flax.CONFIGS[name.split("-")[0]]
+    img_size = 256 if "-256-" in name else 224
+    model = FlaxViTModel(config_func(image_size=img_size), add_pooling_layer=False)
+    return model
 
 
 class MVPCheckpointTest(parameterized.TestCase):
@@ -21,7 +29,7 @@ class MVPCheckpointTest(parameterized.TestCase):
         mvp_model.freeze()
         mvp_model.eval()
 
-        model = mvp_flax.load(model_name)
+        model = _load(model_name)
 
         state_dict = utils.load_torch_pretrained_weights(f"mvp/{model_name}")
         restored_params = import_vit.restore_from_torch_checkpoint(state_dict)
