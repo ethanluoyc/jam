@@ -11,7 +11,11 @@ def get_config():
 
     config.warmup_epochs = 5.0
     config.batch_size = 64
-    config.learning_rate = config.batch_size * 0.1 / 256.0
+    config.num_grad_accumulation_steps = 1
+    # 64 * 64 == 4096 which is the original batch size in the NFNet paper.
+    config.learning_rate = (
+        config.num_grad_accumulation_steps * config.batch_size * 0.1 / 256.0
+    )
     config.momentum = 0.9
     # config.learning_rate = 4e-3
     config.shuffle_buffer_size = 16 * 64

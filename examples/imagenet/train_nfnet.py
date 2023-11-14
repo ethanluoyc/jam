@@ -58,8 +58,6 @@ config_flags.DEFINE_config_file(
 )
 
 
-
-
 def initialized(key, image_size, model):
     input_shape = (1, image_size, image_size, 3)
 
@@ -73,7 +71,9 @@ def initialized(key, image_size, model):
 
 def cross_entropy_loss(logits, labels):
     num_classes = logits.shape[-1]
-    onehot_labels = common_utils.onehot(labels, num_classes=num_classes) # TODO: fix this
+    onehot_labels = common_utils.onehot(
+        labels, num_classes=num_classes
+    )  # TODO: fix this
     smoothed_labels = optax.smooth_labels(onehot_labels, 0.1)
     xentropy = optax.softmax_cross_entropy(logits=logits, labels=smoothed_labels)
     return jnp.mean(xentropy)
@@ -219,33 +219,55 @@ def create_train_state(
 ):
     """Create initial training state."""
     params = initialized(rng, image_size, model)
-    def decay_mask_fn(params):
-        def decay_fn(path):
+
+    def multi_step_learning_rate_fn(step):
+        return learning_rate_fn(step * config.num_grad_accumulation_steps)
+
+    def label_fn(params):
+        def gain_bias_pred(path):
             if path[-1] == "skipgain":
-                return False
+                return True
             if path[-1] == "gain":
-                return False
+                return True
             if path[-1] == "bias":
-                return False
-            return True
-        flat_params = flax.traverse_util.flatten_dict(params)
-        # True for params that we want to apply weight decay to
-        flat_mask = {path: decay_fn(path) for path in flat_params}
-        return flax.traverse_util.unflatten_dict(flat_mask)
+                return True
+            return False
 
-    def clip_mask_fn(params):
-        flat_params = flax.traverse_util.flatten_dict(params)
-        # True for params that we want to apply weight decay to
-        flat_mask = {path: path[0] == 'linear' for path in flat_params}
-        return flax.traverse_util.unflatten_dict(flat_mask)
+        def fc_pred(path):
+            return path[0] == "linear"
 
-    # tx = optax.adamw(learning_rate=learning_rate_fn, weight_decay=config.weight_decay, mask=decay_mask_fn)
-    tx = optax.chain(
-        optax.add_decayed_weights(config.weight_decay, mask=decay_mask_fn),
-        optax.masked(optax.adaptive_grad_clip(1e-2, eps=1e-3), clip_mask_fn),
-        optax.sgd(learning_rate_fn, momentum=config.momentum, nesterov=True)
+        flat_params = flax.traverse_util.flatten_dict(params)
+        flat_label = {}
+        for path in flat_params:
+            if gain_bias_pred(path):
+                flat_label[path] = "gain_biases"
+            elif fc_pred(path):
+                flat_label[path] = "fc"
+            else:
+                flat_label[path] = "weights"
+        return flax.traverse_util.unflatten_dict(flat_label)
+
+    weight_decay = optax.add_decayed_weights(config.weight_decay)
+    clip = optax.adaptive_grad_clip(1e-2, eps=1e-3)
+    sgd = optax.sgd(
+        multi_step_learning_rate_fn, momentum=config.momentum, nesterov=True
     )
-    # tx = optax.sgd(learning_rate_fn, momentum=config.momentum, nesterov=True)
+
+    tx = optax.multi_transform(
+        {
+            "gain_biases": optax.chain(clip, sgd),
+            "fc": optax.chain(weight_decay, sgd),
+            "weights": optax.chain(clip, weight_decay, sgd),
+        },
+        label_fn,
+    )
+
+    tx = optax.MultiSteps(
+        tx,
+        config.num_grad_accumulation_steps,
+        should_skip_update_fn=optax.skip_not_finite,
+    )
+
     state = TrainState.create(apply_fn=model.apply, params=params, tx=tx)
     return state
 

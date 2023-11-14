@@ -253,10 +253,17 @@ def create_train_state(
         }
         return flax.traverse_util.unflatten_dict(flat_mask)
 
+    def multi_step_learning_rate_fn(step):
+        return learning_rate_fn(step * config.num_grad_accumulation_steps)
+
     tx = optax.adamw(
-        learning_rate=learning_rate_fn,
+        learning_rate=multi_step_learning_rate_fn,
         weight_decay=config.weight_decay,
         mask=decay_mask_fn,
+    )
+    tx = optax.MultiSteps(
+        tx,
+        config.num_grad_accumulation_steps,
     )
     if config.half_precision:
         dynamic_scale = dynamic_scale_lib.DynamicScale()
