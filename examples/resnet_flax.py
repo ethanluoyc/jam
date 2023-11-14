@@ -33,7 +33,9 @@ def main(_):
     )
     name = f"resnet{resnet_size}"
     # # N, H, W, C
-    state_dict = load_file(f"data/checkpoints/resnet/{name}/torch_model.safetensors")
+    state_dict = load_file(
+        f"data/models/torchvision/{name}-imagenet1k-v2/torch_model.safetensors"
+    )
     restored_variables = resnet.load_from_torch_checkpoint(state_dict)
 
     image = Image.open(os.path.join("tests", "testdata", "peppers.jpg"))

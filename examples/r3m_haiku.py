@@ -30,7 +30,7 @@ def main(_):
 
     model = hk.without_apply_rng(hk.transform_with_state(forward))
 
-    state_dict = load_file(f"data/checkpoints/r3m/{model_name}/torch_model.safetensors")
+    state_dict = load_file(f"data/models/r3m/{model_name}/torch_model.safetensors")
     params, state = r3m.load_from_torch_checkpoint(state_dict)
 
     x = preprocess_image(image, imsize)

@@ -20,12 +20,7 @@ NUM_CLASSES = 1000
 class ResnetImporterTest(parameterized.TestCase):
     @parameterized.parameters(RESNET_SIZES)
     def test_import_resnet_weights(self, resnet_size):
-        weights = torchvision.models.get_weight(f"ResNet{resnet_size}_Weights.DEFAULT")
-        torch_model = torchvision.models.get_model(
-            f"resnet{resnet_size}", weights=weights
-        )
-        torch_model.eval()
-
+        torch_model = self._get_torch_resnet(resnet_size)
         haiku_module_cls = getattr(resnet_haiku, f"ResNet{resnet_size}")
         name = f"resnet{resnet_size}"
 
@@ -44,7 +39,14 @@ class ResnetImporterTest(parameterized.TestCase):
         hk_model = hk.without_apply_rng(hk.transform_with_state(model_fn))
         # N, H, W, C
         dummy_image = np.random.normal(0, 1, size=(1, 224, 224, 3)).astype(np.float32)
-        state_dict = utils.load_pretrained_weights("resnet", name)
+        if resnet_size >= 50:
+            version = "V2"
+        else:
+            version = "V1"
+
+        state_dict = utils.load_torch_pretrained_weights(
+            f"torchvision/{name}-imagenet1k-{version.lower()}"
+        )
         (
             restore_params,
             restore_state,
@@ -75,7 +77,13 @@ class ResnetImporterTest(parameterized.TestCase):
             jax.random.PRNGKey(0), dummy_image, use_running_average=True
         )
 
-        state_dict = utils.load_torch_pretrained_weights("resnet", name)
+        if resnet_size >= 50:
+            version = "V2"
+        else:
+            version = "V1"
+        state_dict = utils.load_torch_pretrained_weights(
+            f"torchvision/{name}-imagenet1k-{version.lower()}"
+        )
         restored_variables = resnet_flax.load_from_torch_checkpoint(state_dict)
         self.assertTreeSameStructure(initial_variables, restored_variables)
 
@@ -87,7 +95,13 @@ class ResnetImporterTest(parameterized.TestCase):
         np.testing.assert_allclose(torch_output, flax_output, atol=2e-5)
 
     def _get_torch_resnet(self, resnet_size):
-        weights = torchvision.models.get_weight(f"ResNet{resnet_size}_Weights.DEFAULT")
+        if resnet_size >= 50:
+            version = "V2"
+        else:
+            version = "V1"
+        weights = torchvision.models.get_weight(
+            f"ResNet{resnet_size}_Weights.IMAGENET1K_{version}"
+        )
         torch_model = torchvision.models.get_model(
             f"resnet{resnet_size}", weights=weights
         )

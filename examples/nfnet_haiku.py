@@ -20,7 +20,7 @@ def preprocess_image(im, imsize):
 
 def main(_):
     variant = "F0"
-    with open(f"data/checkpoints/nfnet/{variant}/model.npz", "rb") as in_file:
+    with open(f"data/models/nfnet/{variant}/model.npz", "rb") as in_file:
         params = dill.load(in_file)
 
     image = Image.open(os.path.join("tests", "testdata", "peppers.jpg"))

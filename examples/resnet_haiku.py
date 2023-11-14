@@ -39,12 +39,14 @@ def main(_):
         )(x, is_training=is_training, test_local_stats=test_local_stats)
 
     model = hk.without_apply_rng(hk.transform_with_state(model_fn))
-    ckpt_path = f"data/checkpoints/resnet/{name}/torch_model.safetensors"
+
     image = Image.open(os.path.join("tests", "testdata", "peppers.jpg"))
     label = "bell pepper"
 
     x = preprocess_image(image, 224)
-    state_dict = load_file(ckpt_path)
+    state_dict = load_file(
+        f"data/models/torchvision/{name}-imagenet1k-v2/torch_model.safetensors"
+    )
     (params, state) = resnet.load_from_torch_checkpoint(state_dict, name)
     logits, _ = model.apply(params, state, x[None], is_training=False)
 

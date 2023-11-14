@@ -31,7 +31,7 @@ class R3MCheckpointTest(parameterized.TestCase):
 
         resnet_hk = hk.without_apply_rng(hk.transform_with_state(forward))
 
-        state_dict = utils.load_torch_pretrained_weights("r3m", model_name)
+        state_dict = utils.load_torch_pretrained_weights(f"r3m/{model_name}")
         restore_params, restore_state = r3m_haiku.load_from_torch_checkpoint(state_dict)
 
         # N, H, W, C
@@ -59,7 +59,7 @@ class R3MCheckpointTest(parameterized.TestCase):
             np.float32
         )
 
-        state_dict = utils.load_pretrained_weights("r3m", model_name)
+        state_dict = utils.load_torch_pretrained_weights(f"r3m/{model_name}")
         restored_variables = r3m_flax.load_from_torch_checkpoint(state_dict)
 
         embedding = self._predict_torch(r3m, image)

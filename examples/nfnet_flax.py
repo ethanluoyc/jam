@@ -19,7 +19,7 @@ def preprocess_image(im, imsize):
 
 def main(_):
     variant = "F0"
-    with open(f"data/checkpoints/nfnet/{variant}/model.npz", "rb") as in_file:
+    with open(f"data/models/nfnet/{variant}/model.npz", "rb") as in_file:
         params = dill.load(in_file)
         params = nfnet.load_from_haiku_checkpoint(params)
 

@@ -23,7 +23,7 @@ class MVPCheckpointTest(parameterized.TestCase):
 
         model = mvp_flax.load(model_name)
 
-        state_dict = utils.load_torch_pretrained_weights("mvp", model_name)
+        state_dict = utils.load_torch_pretrained_weights(f"mvp/{model_name}")
         restored_params = import_vit.restore_from_torch_checkpoint(state_dict)
         restored_params = jax.device_put(restored_params)
 

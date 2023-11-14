@@ -11,7 +11,7 @@ def main(_):
     model_name = "vits-mae-hoi"
     model = mvp_flax.load(model_name)
 
-    state_dict = load_file(f"data/checkpoints/mvp/{model_name}/torch_model.safetensors")
+    state_dict = load_file(f"data/models/mvp/{model_name}/torch_model.safetensors")
     restored_params = import_vit.restore_from_torch_checkpoint(state_dict)
     restored_params = jax.device_put(restored_params)
 

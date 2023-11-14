@@ -34,7 +34,7 @@ NFNET_TEST_VARIANTS = ["F0"]
 
 
 def _load_pretrained_checkpoint(variant):
-    model_dir = utils.get_model_dir("nfnet", variant)
+    model_dir = utils.get_model_dir(f"nfnet/{variant}")
     with open(os.path.join(model_dir, "model.npz"), "rb") as in_file:
         params = dill.load(in_file)
     return params

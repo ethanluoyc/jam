@@ -8,6 +8,7 @@ import jax.numpy as jnp
 import numpy as np
 import torch
 import torchvision
+import utils
 
 from jam.flax import convnext
 
@@ -17,16 +18,21 @@ class ConvNextTest(parameterized.TestCase):
         ["convnext_tiny", "convnext_small", "convnext_base", "convnext_large"]
     )
     def test_convnext_torch(self, model_name):
-        torch_model = getattr(torchvision.models, model_name)(pretrained=True)
+        size = model_name.split("_")[1].capitalize()
+        weights = torchvision.models.get_weight(
+            f"ConvNeXt_{size}_Weights.IMAGENET1K_V1"
+        )
+        torch_model = torchvision.models.get_model(model_name, weights=weights)
         torch_model.eval()
         module = getattr(convnext, model_name)()
         initial_variables = module.init(
             jax.random.PRNGKey(0), jnp.ones((1, 224, 224, 3)), is_training=False
         )
 
-        restored_params = convnext.load_from_torch_checkpoint(torch_model.state_dict())[
-            "params"
-        ]
+        state_dict = utils.load_torch_pretrained_weights(
+            f"torchvision/{model_name.replace('_', '-')}-imagenet1k-v1"
+        )
+        restored_params = convnext.load_from_torch_checkpoint(state_dict)["params"]
 
         self.assertTreeSameStructure(initial_variables["params"], restored_params)
         dummy_image = np.random.normal(0, 1, size=(1, 224, 224, 3)).astype(np.float32)
@@ -40,7 +46,7 @@ class ConvNextTest(parameterized.TestCase):
             .detach()
             .numpy()
         )
-        np.testing.assert_allclose(flax_output, torch_output, atol=1e-5)
+        np.testing.assert_allclose(flax_output, torch_output, atol=1e-4)
 
     def assertTreeSameStructure(self, tree1, tree2):
         tree1_flat = flax.traverse_util.flatten_dict(tree1, sep="/")

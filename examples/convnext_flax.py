@@ -3,7 +3,7 @@ import os
 from absl import app
 import numpy as np
 from PIL import Image
-import torchvision
+from safetensors.flax import load_file
 
 from jam import imagenet_util
 from jam.flax import convnext
@@ -23,7 +23,9 @@ def main(_):
     flax_module = convnext.convnext_tiny()
 
     # N, H, W, C
-    state_dict = torchvision.models.convnext_tiny(pretrained=True).state_dict()
+    state_dict = load_file(
+        "data/models/torchvision/convnext-tiny-imagenet1k-v1/torch_model.safetensors"
+    )
     restored_variables = convnext.load_from_torch_checkpoint(state_dict)
 
     image = Image.open(os.path.join("tests", "testdata", "peppers.jpg"))
