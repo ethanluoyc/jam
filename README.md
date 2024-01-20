@@ -17,5 +17,21 @@ they are not yet fully tested/benchmarked.
 4. NFNet (via https://github.com/google-deepmind/deepmind-research/blob/master/nfnets), haiku and flax
 5. R3M (via https://github.com/facebookresearch/r3m/tree/main), haiku and flax
 
+See all available models as follows: 
+```bash
+python -m jam.model_zoo --list-models
+```
+
+## Download models
+To download all models:
+```bash
+python src/jam/scripts/download_and_convert.py # downloads all models
+```
+
+To download specific models:
+```
+python src/jam/scripts/download_and_convert.py r3m/r3m-18
+```
+
 ## Examples
 See [examples](./examples/).

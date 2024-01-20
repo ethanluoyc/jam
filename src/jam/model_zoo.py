@@ -153,3 +153,14 @@ def download_and_convert(model_name, model_dir):
             state_dict = state_dict["model"]
         print("Converting to SafeTensors")
         save_file(state_dict, st_path)
+
+if __name__ == "__main__":
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--list-models", action='store_true', help = "List available models")
+    args = parser.parse_args()
+
+    if args.list_models:
+        print("Available models: ")
+        for model in list_models():
+            print("  - ", model)
