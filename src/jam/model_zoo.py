@@ -2,35 +2,35 @@ import functools
 import os
 
 MODEL_URLS = {
-    # NFNets
-    "nfnet/F0": {
-        "ckpt_url": "https://storage.googleapis.com/dm-nfnets/F0_haiku.npz",
-        "ckpt_md5": "0a41039da1cb43adf47f1b7d86ddfe0f",
-    },
-    "nfnet/F1": {
-        "ckpt_url": "https://storage.googleapis.com/dm-nfnets/F1_haiku.npz",
-        "ckpt_md5": "c9126bbfaf855f9ddb7ff3b902558781",
-    },
-    "nfnet/F2": {
-        "ckpt_url": "https://storage.googleapis.com/dm-nfnets/F2_haiku.npz",
-        "ckpt_md5": "7a018d8d1498020e2f5a8719a1e7f53f",
-    },
-    "nfnet/F3": {
-        "ckpt_url": "https://storage.googleapis.com/dm-nfnets/F3_haiku.npz",
-        "ckpt_md5": "d8e1e78d26db659c486150dbaccbe78a",
-    },
-    "nfnet/F4": {
-        "ckpt_url": "https://storage.googleapis.com/dm-nfnets/F4_haiku.npz",
-        "ckpt_md5": "f5974a7e3388aa81b91a9f1403e759a4",
-    },
-    "nfnet/F5": {
-        "ckpt_url": "https://storage.googleapis.com/dm-nfnets/F5_haiku.npz",
-        "ckpt_md5": "8639e925de951030651ac775b9f915c3",
-    },
-    "nfnet/F6": {
-        "ckpt_url": "https://storage.googleapis.com/dm-nfnets/F6_haiku.npz",
-        "ckpt_md5": "b16cca40ac1ecec2bd5e3273866da0c1",
-    },
+    # # NFNets
+    # "nfnet/F0": {
+    #     "ckpt_url": "https://storage.googleapis.com/dm-nfnets/F0_haiku.npz",
+    #     "ckpt_md5": "0a41039da1cb43adf47f1b7d86ddfe0f",
+    # },
+    # "nfnet/F1": {
+    #     "ckpt_url": "https://storage.googleapis.com/dm-nfnets/F1_haiku.npz",
+    #     "ckpt_md5": "c9126bbfaf855f9ddb7ff3b902558781",
+    # },
+    # "nfnet/F2": {
+    #     "ckpt_url": "https://storage.googleapis.com/dm-nfnets/F2_haiku.npz",
+    #     "ckpt_md5": "7a018d8d1498020e2f5a8719a1e7f53f",
+    # },
+    # "nfnet/F3": {
+    #     "ckpt_url": "https://storage.googleapis.com/dm-nfnets/F3_haiku.npz",
+    #     "ckpt_md5": "d8e1e78d26db659c486150dbaccbe78a",
+    # },
+    # "nfnet/F4": {
+    #     "ckpt_url": "https://storage.googleapis.com/dm-nfnets/F4_haiku.npz",
+    #     "ckpt_md5": "f5974a7e3388aa81b91a9f1403e759a4",
+    # },
+    # "nfnet/F5": {
+    #     "ckpt_url": "https://storage.googleapis.com/dm-nfnets/F5_haiku.npz",
+    #     "ckpt_md5": "8639e925de951030651ac775b9f915c3",
+    # },
+    # "nfnet/F6": {
+    #     "ckpt_url": "https://storage.googleapis.com/dm-nfnets/F6_haiku.npz",
+    #     "ckpt_md5": "b16cca40ac1ecec2bd5e3273866da0c1",
+    # },
     # R3M
     "r3m/r3m-50": {
         "ckpt_url": "https://drive.google.com/uc?id=1Xu0ssuG0N1zjZS54wmWzJ7-nb0-7XzbA",
@@ -50,27 +50,27 @@ MODEL_URLS = {
         # "config_url": "https://drive.google.com/uc?id=1RY0NS-Tl4G7M1Ik_lOym0b5VIBxX9dqW",
         # "config_md5": "ebbb6f4259fe866d4d31571aedfbb018",
     },
-    # MVP
-    "mvp/vits-mae-hoi": {
-        "ckpt_url": "https://berkeley.box.com/shared/static/m93ynem558jo8vltlads5rcmnahgsyzr.pth",
-        "ckpt_md5": "fe6e30eb4256fae298ea0a6c6b4c1ae7",
-    },
-    # "vits-mae-in": {
-    #     "ckpt_url": "https://berkeley.box.com/shared/static/qlsjkv03nngu37eyvtjikfe7rz14k66d.pth",
-    #     "ckpt_md5": "29a004bd4332f97cd22f55c1da26bc15",
+    # # MVP
+    # "mvp/vits-mae-hoi": {
+    #     "ckpt_url": "https://berkeley.box.com/shared/static/m93ynem558jo8vltlads5rcmnahgsyzr.pth",
+    #     "ckpt_md5": "fe6e30eb4256fae298ea0a6c6b4c1ae7",
     # },
-    # "vits-sup-in": {
-    #     "ckpt_url": "https://berkeley.box.com/shared/static/95a4ncqrh1o7llne2b1gpsfip4dt65m4.pth",
-    #     "ckpt_md5": "f8f23ba960af1017783c9b975875d36d",
+    # # "vits-mae-in": {
+    # #     "ckpt_url": "https://berkeley.box.com/shared/static/qlsjkv03nngu37eyvtjikfe7rz14k66d.pth",
+    # #     "ckpt_md5": "29a004bd4332f97cd22f55c1da26bc15",
+    # # },
+    # # "vits-sup-in": {
+    # #     "ckpt_url": "https://berkeley.box.com/shared/static/95a4ncqrh1o7llne2b1gpsfip4dt65m4.pth",
+    # #     "ckpt_md5": "f8f23ba960af1017783c9b975875d36d",
+    # # },
+    # "mvp/vitb-mae-egosoup": {
+    #     "ckpt_url": "https://berkeley.box.com/shared/static/0ckepd2ja3pi570z89ogd899cn387yut.pth",
+    #     "ckpt_md5": "526093597ac1dc55df618bcbdfe8da4a",
     # },
-    "mvp/vitb-mae-egosoup": {
-        "ckpt_url": "https://berkeley.box.com/shared/static/0ckepd2ja3pi570z89ogd899cn387yut.pth",
-        "ckpt_md5": "526093597ac1dc55df618bcbdfe8da4a",
-    },
-    "mvp/vitl-256-mae-egosoup": {
-        "ckpt_url": "https://berkeley.box.com/shared/static/6p0pc47mlpp4hhwlin2hf035lxlgddxr.pth",
-        "ckpt_md5": "5352b0b6c04f044f67eba41b667fcde6",
-    },
+    # "mvp/vitl-256-mae-egosoup": {
+    #     "ckpt_url": "https://berkeley.box.com/shared/static/6p0pc47mlpp4hhwlin2hf035lxlgddxr.pth",
+    #     "ckpt_md5": "5352b0b6c04f044f67eba41b667fcde6",
+    # },
     # torchvision
     # resnet
     "torchvision/resnet18-imagenet1k-v1": {
@@ -122,7 +122,7 @@ def list_models():
     return sorted(list(MODEL_URLS.keys()))
 
 
-def download_and_convert(model_name, model_dir):
+def download_and_convert(model_name, model_dir, skip_download: bool = False):
     import gdown
 
     url = MODEL_URLS[model_name]["ckpt_url"]
@@ -130,16 +130,18 @@ def download_and_convert(model_name, model_dir):
     model_dir = os.path.join(model_dir, model_name)
     os.makedirs(model_dir, exist_ok=True)
     if model_name.startswith("nfnet"):
-        gdown.cached_download(
-            url=url, path=os.path.join(model_dir, HAIKU_CKPT_FILENAME), md5=md5
-        )
+        if skip_download:
+            gdown.cached_download(
+                url=url, path=os.path.join(model_dir, HAIKU_CKPT_FILENAME), md5=md5
+            )
     else:
         from safetensors.torch import save_file
         import torch
 
-        gdown.cached_download(
-            url=url, path=os.path.join(model_dir, TORCH_CKPT_FILENAME), md5=md5
-        )
+        if skip_download:
+            gdown.cached_download(
+                url=url, path=os.path.join(model_dir, TORCH_CKPT_FILENAME), md5=md5
+            )
         ckpt_path = os.path.join(model_dir, TORCH_CKPT_FILENAME)
         st_path = os.path.join(model_dir, TORCH_SAFETENSORS_FILENAME)
 
